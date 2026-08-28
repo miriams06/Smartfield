@@ -1,0 +1,6 @@
+@SmartField.Api_HostAddress = http://localhost:5273
+
+GET {{SmartField.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
