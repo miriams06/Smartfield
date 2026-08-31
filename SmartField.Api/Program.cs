@@ -5,6 +5,7 @@ using SmartField.Api.Authentication;
 using SmartField.Api.HealthChecks;
 using SmartField.Application.Abstractions;
 using SmartField.Application.Employees;
+using SmartField.Application.WorkSites;
 using SmartField.Infrastructure.Identity;
 using SmartField.Infrastructure.Persistence;
 
@@ -36,6 +37,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(jwtSigningKey);
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<IWorkSiteService, WorkSiteService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentCompanyProvider, HttpCurrentCompanyProvider>();
 builder.Services.AddSqlServerPersistence(builder.Configuration);

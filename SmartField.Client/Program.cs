@@ -29,5 +29,6 @@ builder.Services.AddScoped(provider =>
     provider.GetRequiredService<IHttpClientFactory>().CreateClient("SmartField.Api"));
 builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<EmployeeApiClient>();
+builder.Services.AddScoped<WorkSiteApiClient>();
 
 await builder.Build().RunAsync();

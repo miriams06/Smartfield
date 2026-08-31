@@ -1,0 +1,353 @@
+@page "/admin/worksites"
+@attribute [Authorize(Roles = AuthConstants.BackofficeRoles)]
+@layout BackofficeLayout
+@inject WorkSiteApiClient WorkSiteApiClient
+
+<PageTitle>Locais de trabalho - SmartField Time</PageTitle>
+
+<section class="worksites-page">
+    <header class="worksites-header">
+        <div>
+            <p class="eyebrow">Backoffice</p>
+            <h1>Locais de trabalho</h1>
+            <p class="muted">Gerir os locais onde as equipas podem registar assiduidade.</p>
+        </div>
+        <button class="btn btn-primary" type="button" @onclick="StartCreate" disabled="@isBusy">
+            Novo local
+        </button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="worksite-message worksite-message-success" role="status">@successMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="worksite-message worksite-message-error" role="alert">@errorMessage</div>
+    }
+
+    <div class="worksites-toolbar">
+        <label class="worksites-search-label" for="worksite-search">Pesquisar</label>
+        <div class="worksites-search">
+            <input id="worksite-search"
+                   class="form-control"
+                   placeholder="Código, nome, morada ou centro de custo ERP"
+                   @bind="searchText"
+                   @bind:event="oninput"
+                   @onkeydown="HandleSearchKeyDownAsync" />
+            <button class="btn btn-primary" type="button" @onclick="SearchAsync" disabled="@isBusy">
+                Pesquisar
+            </button>
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearchAsync" disabled="@isBusy">
+                Limpar
+            </button>
+        </div>
+    </div>
+
+    <div class="worksites-layout @(isEditing ? "has-editor" : string.Empty)">
+        <div class="worksites-list-panel">
+            @if (isLoading)
+            {
+                <p class="muted">A carregar locais de trabalho...</p>
+            }
+            else if (workSites.Count == 0)
+            {
+                <div class="empty-state">
+                    <h2>Sem locais</h2>
+                    <p>Não foram encontrados locais de trabalho para os critérios indicados.</p>
+                </div>
+            }
+            else
+            {
+                <div class="worksites-table-wrapper">
+                    <table class="worksites-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Nome</th>
+                                <th>Morada</th>
+                                <th>Coordenadas</th>
+                                <th>Raio</th>
+                                <th>ERP</th>
+                                <th>Estado</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var workSite in workSites)
+                            {
+                                <tr>
+                                    <td>@workSite.Code</td>
+                                    <td>@workSite.Name</td>
+                                    <td>@(workSite.Address ?? "—")</td>
+                                    <td>
+                                        <span>@FormatCoordinate(workSite.Latitude)</span>
+                                        <small>@FormatCoordinate(workSite.Longitude)</small>
+                                    </td>
+                                    <td>@FormatRadius(workSite.GeofenceRadiusMeters)</td>
+                                    <td>@(workSite.ErpCostCenterCode ?? "—")</td>
+                                    <td>
+                                        <span class="status-badge @(workSite.IsActive ? "is-active" : "is-inactive")">
+                                            @(workSite.IsActive ? "Ativo" : "Inativo")
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                type="button"
+                                                @onclick="() => EditAsync(workSite.Id)"
+                                                disabled="@isBusy">
+                                            Editar
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        @if (isEditing)
+        {
+            <aside class="worksite-editor" aria-label="Editor de local de trabalho">
+                <div class="worksite-editor-header">
+                    <div>
+                        <p class="eyebrow">@(editor.Id.HasValue ? "Editar" : "Criar")</p>
+                        <h2>@(editor.Id.HasValue ? editor.Name : "Novo local")</h2>
+                    </div>
+                    <button class="btn-close"
+                            type="button"
+                            aria-label="Fechar"
+                            @onclick="CancelEdit"
+                            disabled="@isSaving"></button>
+                </div>
+
+                <EditForm Model="@editor" OnValidSubmit="SaveAsync">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+
+                    <div class="worksite-form-grid">
+                        <label>
+                            Código
+                            <InputText class="form-control" @bind-Value="editor.Code" />
+                            <ValidationMessage For="@(() => editor.Code)" />
+                        </label>
+
+                        <label>
+                            Nome
+                            <InputText class="form-control" @bind-Value="editor.Name" />
+                            <ValidationMessage For="@(() => editor.Name)" />
+                        </label>
+
+                        <label class="span-two">
+                            Morada <span class="optional-field">(opcional)</span>
+                            <InputText class="form-control" @bind-Value="editor.Address" />
+                            <ValidationMessage For="@(() => editor.Address)" />
+                        </label>
+
+                        <label>
+                            Latitude <span class="optional-field">(opcional)</span>
+                            <InputNumber class="form-control" @bind-Value="editor.Latitude" />
+                            <ValidationMessage For="@(() => editor.Latitude)" />
+                        </label>
+
+                        <label>
+                            Longitude <span class="optional-field">(opcional)</span>
+                            <InputNumber class="form-control" @bind-Value="editor.Longitude" />
+                            <ValidationMessage For="@(() => editor.Longitude)" />
+                        </label>
+
+                        <label>
+                            Raio permitido em metros <span class="optional-field">(opcional)</span>
+                            <InputNumber class="form-control" @bind-Value="editor.GeofenceRadiusMeters" />
+                            <ValidationMessage For="@(() => editor.GeofenceRadiusMeters)" />
+                        </label>
+
+                        <label>
+                            ERP Cost Center Code <span class="optional-field">(opcional)</span>
+                            <InputText class="form-control" @bind-Value="editor.ErpCostCenterCode" />
+                            <ValidationMessage For="@(() => editor.ErpCostCenterCode)" />
+                        </label>
+
+                        <label class="worksite-active-field">
+                            <InputCheckbox @bind-Value="editor.IsActive" />
+                            Local ativo
+                        </label>
+                    </div>
+
+                    <div class="worksite-form-actions">
+                        <button class="btn btn-outline-secondary" type="button" @onclick="CancelEdit" disabled="@isSaving">
+                            Cancelar
+                        </button>
+                        <button class="btn btn-primary" type="submit" disabled="@isSaving">
+                            @(isSaving ? "A guardar..." : "Guardar")
+                        </button>
+                    </div>
+                </EditForm>
+            </aside>
+        }
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<WorkSiteDto> workSites = [];
+    private WorkSiteEditorModel editor = new();
+    private string? searchText;
+    private string? successMessage;
+    private string? errorMessage;
+    private bool isLoading;
+    private bool isSaving;
+    private bool isEditing;
+    private bool isBusy => isLoading || isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWorkSitesAsync();
+    }
+
+    private async Task LoadWorkSitesAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            workSites = await WorkSiteApiClient.SearchAsync(
+                searchText,
+                CancellationToken.None);
+        }
+        catch (WorkSiteApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        successMessage = null;
+        await LoadWorkSitesAsync();
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        searchText = null;
+        successMessage = null;
+        await LoadWorkSitesAsync();
+    }
+
+    private async Task HandleSearchKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !isBusy)
+        {
+            await SearchAsync();
+        }
+    }
+
+    private void StartCreate()
+    {
+        errorMessage = null;
+        successMessage = null;
+        editor = new WorkSiteEditorModel();
+        isEditing = true;
+    }
+
+    private async Task EditAsync(Guid workSiteId)
+    {
+        isLoading = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var workSite = await WorkSiteApiClient.GetAsync(
+                workSiteId,
+                CancellationToken.None);
+
+            editor = new WorkSiteEditorModel();
+            editor.Load(workSite);
+            isEditing = true;
+        }
+        catch (WorkSiteApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        isSaving = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            if (editor.Id.HasValue)
+            {
+                await WorkSiteApiClient.UpdateAsync(
+                    editor.Id.Value,
+                    editor.ToUpdateRequest(),
+                    CancellationToken.None);
+                successMessage = "Local de trabalho atualizado com sucesso.";
+            }
+            else
+            {
+                await WorkSiteApiClient.CreateAsync(
+                    editor.ToCreateRequest(),
+                    CancellationToken.None);
+                successMessage = "Local de trabalho criado com sucesso.";
+            }
+
+            isEditing = false;
+            await LoadWorkSitesAsync();
+        }
+        catch (WorkSiteApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void CancelEdit()
+    {
+        isEditing = false;
+        editor = new WorkSiteEditorModel();
+        errorMessage = null;
+    }
+
+    private static string FormatCoordinate(decimal? value)
+    {
+        return value.HasValue ? value.Value.ToString("0.000000") : "—";
+    }
+
+    private static string FormatRadius(int? value)
+    {
+        return value.HasValue ? $"{value.Value} m" : "—";
+    }
+}

@@ -1,0 +1,188 @@
+.worksites-page {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.worksites-header,
+.worksite-editor-header,
+.worksites-search,
+.worksite-form-actions {
+    display: flex;
+    align-items: center;
+}
+
+.worksites-header,
+.worksite-editor-header {
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.worksites-toolbar,
+.worksites-list-panel,
+.worksite-editor {
+    padding: 1rem;
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.worksites-search-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-weight: 700;
+}
+
+.worksites-search {
+    gap: 0.75rem;
+}
+
+.worksites-search .form-control {
+    flex: 1;
+}
+
+.worksites-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+}
+
+.worksites-list-panel,
+.worksite-editor {
+    min-width: 0;
+}
+
+.worksites-table-wrapper {
+    overflow-x: auto;
+}
+
+.worksites-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.worksites-table th,
+.worksites-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e4e9f0;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.worksites-table th {
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.worksites-table td small,
+.worksites-table td span {
+    display: block;
+}
+
+.worksites-table td small {
+    margin-top: 0.2rem;
+    color: #64748b;
+}
+
+.status-badge {
+    display: inline-flex;
+    width: fit-content;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.status-badge.is-active {
+    color: #176b57;
+    background: #def7ec;
+}
+
+.status-badge.is-inactive {
+    color: #7c2d12;
+    background: #ffedd5;
+}
+
+.worksite-message {
+    padding: 0.85rem 1rem;
+    border-radius: 8px;
+}
+
+.worksite-message-success {
+    color: #176b57;
+    background: #def7ec;
+}
+
+.worksite-message-error {
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+.worksite-editor {
+    box-shadow: 0 16px 38px rgba(31, 41, 51, 0.08);
+}
+
+.worksite-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.worksite-form-grid label:not(.worksite-active-field) {
+    display: grid;
+    gap: 0.35rem;
+    font-weight: 700;
+}
+
+.optional-field {
+    color: #64748b;
+    font-weight: 500;
+}
+
+.span-two {
+    grid-column: 1 / -1;
+}
+
+.worksite-active-field {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    align-self: end;
+    min-height: 2.75rem;
+    font-weight: 700;
+}
+
+.worksite-form-actions {
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+@media (min-width: 1180px) {
+    .worksites-layout.has-editor {
+        grid-template-columns: minmax(0, 1.6fr) minmax(22rem, 0.9fr);
+        align-items: start;
+    }
+
+    .worksite-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 760px) {
+    .worksites-header,
+    .worksites-search,
+    .worksite-form-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .worksite-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .span-two {
+        grid-column: auto;
+    }
+}
