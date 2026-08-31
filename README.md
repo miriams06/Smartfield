@@ -31,14 +31,29 @@ A solução já inclui:
   - ativação e desativação;
   - associação a utilizador;
   - associação a local habitual;
-  - código de funcionário no ERP.
+  - código de funcionário no ERP;
+- gestão de locais de trabalho no backoffice:
+  - listagem;
+  - pesquisa;
+  - criação;
+  - edição;
+  - ativação e desativação;
+  - coordenadas de latitude e longitude;
+  - raio de geofence;
+  - código de centro de custo ERP;
+- serviço de geolocalização:
+  - integração com a Browser Geolocation API;
+  - recolha pontual de latitude, longitude e precisão;
+  - validação de permissões e indisponibilidade de localização;
+  - cálculo de distância ao local de trabalho através de Haversine;
+  - modos de geofence `Disabled`, `Warning` e `Block`;
+  - validação sempre no servidor e no contexto da empresa autenticada.
 
 Ainda não devem ser consideradas implementadas funcionalidades como:
 
 - registo real de picagens;
 - pausas e retomas;
 - correções de assiduidade pelo backoffice;
-- gestão de locais de trabalho;
 - gestão de obras e intervenções;
 - integração efetiva com PRIMAVERA;
 - sincronização offline de eventos de negócio.
@@ -95,7 +110,7 @@ Smartfield.sln
 - Datas persistidas usam UTC, salvo justificação explícita.
 - `AttendanceEvent` é um modelo baseado em eventos e preserva o histórico original.
 - Correções não devem apagar silenciosamente eventos de assiduidade.
-- Geolocalização só deve ser recolhida no momento da picagem; não existe tracking contínuo ou em background.
+- Geolocalização só deve ser recolhida no momento da operação que a exige; não existe tracking contínuo ou em background.
 
 ## Multiempresa e segurança
 
@@ -267,7 +282,83 @@ POST /api/employees
 PUT  /api/employees/{id}
 ```
 
+### Locais de trabalho
+
+Protegidos pela policy `Backoffice`:
+
+```text
+GET  /api/worksites?search=<texto>
+GET  /api/worksites/{id}
+POST /api/worksites
+PUT  /api/worksites/{id}
+```
+
+### Geolocalização
+
+Requer utilizador autenticado:
+
+```text
+POST /api/geolocation/validate
+```
+
+Pedido:
+
+```json
+{
+  "latitude": 38.722252,
+  "longitude": -9.139337,
+  "accuracyMeters": 10,
+  "workSiteId": "00000000-0000-0000-0000-000000000000"
+}
+```
+
+O `workSiteId` deve ser o GUID real de um local de trabalho da empresa autenticada.
+
+A resposta indica se a operação pode prosseguir, se a localização está dentro do raio e qual a distância calculada:
+
+```json
+{
+  "isAccepted": true,
+  "isInsideGeofence": true,
+  "distanceFromWorkSiteMeters": 12.34,
+  "geofenceMode": 1,
+  "resultCode": "InsideGeofence",
+  "message": "A localização está dentro do raio permitido."
+}
+```
+
 A API nunca recebe `CompanyId` do Client para decidir a empresa. O contexto da empresa é obtido a partir do utilizador autenticado.
+
+## Geolocalização e geofence
+
+O Client usa `navigator.geolocation.getCurrentPosition`, através de um wrapper JavaScript em:
+
+```text
+SmartField.Client/wwwroot/js/smartfield-geolocation.js
+```
+
+O acesso à localização é pontual. Não existe `watchPosition`, tracking contínuo nem recolha em background.
+
+O serviço trata os estados:
+
+```text
+success
+permission-denied
+position-unavailable
+timeout
+unsupported
+unknown-error
+```
+
+A decisão de geofence é sempre feita no servidor. Os modos atuais são:
+
+- `Disabled`: não bloqueia a operação;
+- `Warning`: aceita, mas assinala localização fora do raio ou localização indisponível;
+- `Block`: rejeita quando a localização não cumpre a regra definida.
+
+A distância ao local de trabalho é calculada na Application através da fórmula de Haversine. O raio específico do `WorkSite`, quando definido, tem precedência sobre `CompanySettings.DefaultGeofenceRadiusMeters`.
+
+A persistência de `Latitude`, `Longitude`, `LocationAccuracyMeters`, `DistanceFromWorkSiteMeters` e `IsInsideGeofence` pertence ao momento em que o respetivo `AttendanceEvent` for criado. O endpoint isolado de validação não cria eventos nem registos paralelos de geolocalização.
 
 ## PWA
 
@@ -404,8 +495,9 @@ Antes da passagem do projeto:
 5. confirmar os URLs locais da API e do Client;
 6. validar login, health check e funcionalidades já implementadas;
 7. explicar as regras de isolamento por empresa;
-8. entregar o Planner juntamente com o acesso ao repositório;
-9. listar decisões pendentes e dívida técnica fora do README, no backlog ou documentação apropriada.
+8. explicar que a localização é recolhida apenas sob pedido e validada no servidor;
+9. entregar o Planner juntamente com o acesso ao repositório;
+10. listar decisões pendentes e dívida técnica fora do README, no backlog ou documentação apropriada.
 
 ## Resolução de problemas frequentes
 
@@ -444,3 +536,11 @@ Confirmar:
 - API em execução;
 - certificado HTTPS de desenvolvimento aceite;
 - origem do Client incluída em `Cors:AllowedOrigins`.
+
+### A geolocalização devolve `permission-denied`
+
+Confirmar que o browser tem permissão de localização para a origem do Client e que a aplicação está a correr em HTTPS.
+
+### `POST /api/geolocation/validate` devolve `400`
+
+Confirmar que latitude e longitude são válidas e enviadas em conjunto, que `accuracyMeters` não é negativo e que `workSiteId`, quando enviado, é um GUID válido.
