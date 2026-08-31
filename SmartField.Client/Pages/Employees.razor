@@ -1,0 +1,394 @@
+@page "/admin/employees"
+@attribute [Authorize(Roles = AuthConstants.BackofficeRoles)]
+@layout BackofficeLayout
+@using SmartField.Client.Employees
+@inject EmployeeApiClient EmployeeApiClient
+
+<PageTitle>Funcionários - SmartField Time</PageTitle>
+
+<section class="employees-page">
+    <header class="employees-header">
+        <div>
+            <p class="eyebrow">Backoffice</p>
+            <h1>Funcionários</h1>
+            <p class="muted">Gerir os funcionários da empresa atual.</p>
+        </div>
+        <button class="btn btn-primary" type="button" @onclick="StartCreateAsync" disabled="@isBusy">
+            Novo funcionário
+        </button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="employee-message employee-message-success" role="status">@successMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="employee-message employee-message-error" role="alert">@errorMessage</div>
+    }
+
+    <div class="employees-toolbar">
+        <label class="employees-search-label" for="employee-search">Pesquisar</label>
+        <div class="employees-search">
+            <input id="employee-search"
+                   class="form-control"
+                   placeholder="Número, nome, email, telefone ou código ERP"
+                   @bind="searchText"
+                   @bind:event="oninput"
+                   @onkeydown="HandleSearchKeyDownAsync" />
+            <button class="btn btn-primary" type="button" @onclick="SearchAsync" disabled="@isBusy">
+                Pesquisar
+            </button>
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearchAsync" disabled="@isBusy">
+                Limpar
+            </button>
+        </div>
+    </div>
+
+    <div class="employees-layout @(isEditing ? "has-editor" : string.Empty)">
+        <div class="employees-list-panel">
+            @if (isLoading)
+            {
+                <p class="muted">A carregar funcionários...</p>
+            }
+            else if (employees.Count == 0)
+            {
+                <div class="empty-state">
+                    <h2>Sem funcionários</h2>
+                    <p>Não foram encontrados funcionários para os critérios indicados.</p>
+                </div>
+            }
+            else
+            {
+                <div class="employees-table-wrapper">
+                    <table class="employees-table">
+                        <thead>
+                            <tr>
+                                <th>Número</th>
+                                <th>Nome</th>
+                                <th>Contacto</th>
+                                <th>Local habitual</th>
+                                <th>Utilizador</th>
+                                <th>ERP</th>
+                                <th>Estado</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var employee in employees)
+                            {
+                                <tr>
+                                    <td>@employee.EmployeeNumber</td>
+                                    <td>@employee.Name</td>
+                                    <td>
+                                        <span>@(employee.Email ?? "—")</span>
+                                        <small>@(employee.MobilePhone ?? "—")</small>
+                                    </td>
+                                    <td>@(employee.DefaultWorkSiteName ?? "—")</td>
+                                    <td>@(employee.UserEmail ?? "—")</td>
+                                    <td>@(employee.ErpEmployeeCode ?? "—")</td>
+                                    <td>
+                                        <span class="status-badge @(employee.IsActive ? "is-active" : "is-inactive")">
+                                            @(employee.IsActive ? "Ativo" : "Inativo")
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                type="button"
+                                                @onclick="() => EditAsync(employee.Id)"
+                                                disabled="@isBusy">
+                                            Editar
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        @if (isEditing)
+        {
+            <aside class="employee-editor" aria-label="Editor de funcionário">
+                <div class="employee-editor-header">
+                    <div>
+                        <p class="eyebrow">@(editor.Id.HasValue ? "Editar" : "Criar")</p>
+                        <h2>@(editor.Id.HasValue ? editor.Name : "Novo funcionário")</h2>
+                    </div>
+                    <button class="btn-close"
+                            type="button"
+                            aria-label="Fechar"
+                            @onclick="CancelEdit"
+                            disabled="@isSaving"></button>
+                </div>
+
+                <EditForm Model="@editor" OnValidSubmit="SaveAsync">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+
+                    <div class="employee-form-grid">
+                        <label>
+                            Número de funcionário
+                            <InputText class="form-control" @bind-Value="editor.EmployeeNumber" />
+                            <ValidationMessage For="@(() => editor.EmployeeNumber)" />
+                        </label>
+
+                        <label>
+                            Nome
+                            <InputText class="form-control" @bind-Value="editor.Name" />
+                            <ValidationMessage For="@(() => editor.Name)" />
+                        </label>
+
+                        <label>
+                            Email
+                            <InputText class="form-control" type="email" @bind-Value="editor.Email" />
+                            <ValidationMessage For="@(() => editor.Email)" />
+                        </label>
+
+                        <label>
+                            Telefone
+                            <InputText class="form-control" @bind-Value="editor.MobilePhone" />
+                            <ValidationMessage For="@(() => editor.MobilePhone)" />
+                        </label>
+
+                        <label>
+                            Local habitual
+                            <InputSelect class="form-control" TValue="Guid?" @bind-Value="editor.DefaultWorkSiteId">
+                                <option value="">Sem local habitual</option>
+                                @foreach (var workSite in options.WorkSites)
+                                {
+                                    <option value="@workSite.Id">@FormatWorkSite(workSite)</option>
+                                }
+                            </InputSelect>
+                        </label>
+
+                        <label>
+                            Utilizador
+                            <InputSelect class="form-control" TValue="Guid?" @bind-Value="editor.UserId">
+                                <option value="">Sem utilizador associado</option>
+                                @foreach (var user in options.Users)
+                                {
+                                    <option value="@user.Id">@FormatUser(user)</option>
+                                }
+                            </InputSelect>
+                        </label>
+
+                        <label>
+                            ERP Employee Code
+                            <InputText class="form-control" @bind-Value="editor.ErpEmployeeCode" />
+                            <ValidationMessage For="@(() => editor.ErpEmployeeCode)" />
+                        </label>
+
+                        <label class="employee-active-field">
+                            <InputCheckbox @bind-Value="editor.IsActive" />
+                            Funcionário ativo
+                        </label>
+                    </div>
+
+                    <div class="employee-form-actions">
+                        <button class="btn btn-outline-secondary" type="button" @onclick="CancelEdit" disabled="@isSaving">
+                            Cancelar
+                        </button>
+                        <button class="btn btn-primary" type="submit" disabled="@isSaving">
+                            @(isSaving ? "A guardar..." : "Guardar")
+                        </button>
+                    </div>
+                </EditForm>
+            </aside>
+        }
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<EmployeeDto> employees = [];
+    private EmployeeOptions options = new([], []);
+    private EmployeeEditorModel editor = new();
+    private string? searchText;
+    private string? successMessage;
+    private string? errorMessage;
+    private bool isLoading;
+    private bool isSaving;
+    private bool isEditing;
+    private bool isBusy => isLoading || isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEmployeesAsync();
+    }
+
+    private async Task LoadEmployeesAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            employees = await EmployeeApiClient.SearchAsync(
+                searchText,
+                CancellationToken.None);
+        }
+        catch (EmployeeApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        successMessage = null;
+        await LoadEmployeesAsync();
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        searchText = null;
+        successMessage = null;
+        await LoadEmployeesAsync();
+    }
+
+    private async Task HandleSearchKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !isBusy)
+        {
+            await SearchAsync();
+        }
+    }
+
+    private async Task StartCreateAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            options = await EmployeeApiClient.GetOptionsAsync(
+                null,
+                CancellationToken.None);
+            editor = new EmployeeEditorModel();
+            isEditing = true;
+        }
+        catch (EmployeeApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task EditAsync(Guid employeeId)
+    {
+        isLoading = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var employeeTask = EmployeeApiClient.GetAsync(
+                employeeId,
+                CancellationToken.None);
+            var optionsTask = EmployeeApiClient.GetOptionsAsync(
+                employeeId,
+                CancellationToken.None);
+
+            await Task.WhenAll(employeeTask, optionsTask);
+
+            editor = new EmployeeEditorModel();
+            editor.Load(await employeeTask);
+            options = await optionsTask;
+            isEditing = true;
+        }
+        catch (EmployeeApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        isSaving = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            if (editor.Id.HasValue)
+            {
+                await EmployeeApiClient.UpdateAsync(
+                    editor.Id.Value,
+                    editor.ToUpdateRequest(),
+                    CancellationToken.None);
+                successMessage = "Funcionário atualizado com sucesso.";
+            }
+            else
+            {
+                await EmployeeApiClient.CreateAsync(
+                    editor.ToCreateRequest(),
+                    CancellationToken.None);
+                successMessage = "Funcionário criado com sucesso.";
+            }
+
+            isEditing = false;
+            await LoadEmployeesAsync();
+        }
+        catch (EmployeeApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void CancelEdit()
+    {
+        isEditing = false;
+        editor = new EmployeeEditorModel();
+        errorMessage = null;
+    }
+
+    private static string FormatWorkSite(EmployeeWorkSiteOption workSite)
+    {
+        var state = workSite.IsActive ? string.Empty : " (inativo)";
+        return $"{workSite.Code} — {workSite.Name}{state}";
+    }
+
+    private static string FormatUser(EmployeeUserOption user)
+    {
+        var state = user.IsActive ? string.Empty : " (inativo)";
+        return $"{user.Email}{state}";
+    }
+}

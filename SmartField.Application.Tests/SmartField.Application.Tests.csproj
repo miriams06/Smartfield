@@ -20,4 +20,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SmartField.Application\SmartField.Application.csproj" />
+  </ItemGroup>
+
 </Project>
