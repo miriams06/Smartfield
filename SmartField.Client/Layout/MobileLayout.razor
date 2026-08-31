@@ -1,0 +1,29 @@
+@inherits LayoutComponentBase
+
+<div class="mobile-layout">
+    <header class="mobile-header">
+        <a class="brand-link" href="">SmartField Time</a>
+        <AuthorizeView>
+            <Authorized Context="mobileHeaderContext">
+                <a class="text-link" href="logout">Sair</a>
+            </Authorized>
+        </AuthorizeView>
+    </header>
+
+    <main class="mobile-content">
+        @Body
+    </main>
+
+    <AuthorizeView>
+        <Authorized Context="mobileNavContext">
+            <nav class="mobile-nav" aria-label="Navegação móvel">
+                <NavLink href="" Match="NavLinkMatch.All">Terreno</NavLink>
+                <AuthorizeView Roles="@($"{AuthConstants.AdminRole},{AuthConstants.ManagerRole}")">
+                    <Authorized Context="mobileBackofficeContext">
+                        <NavLink href="backoffice">Backoffice</NavLink>
+                    </Authorized>
+                </AuthorizeView>
+            </nav>
+        </Authorized>
+    </AuthorizeView>
+</div>

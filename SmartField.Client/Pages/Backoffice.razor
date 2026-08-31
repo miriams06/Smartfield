@@ -1,0 +1,28 @@
+@page "/backoffice"
+@attribute [Authorize(Roles = AuthConstants.BackofficeRoles)]
+@layout BackofficeLayout
+
+<PageTitle>Backoffice - SmartField Time</PageTitle>
+
+<section class="backoffice-dashboard">
+    <div>
+        <p class="eyebrow">Backoffice</p>
+        <h1>Validação de assiduidade</h1>
+        <p class="muted">Área preparada para gestão e validação por perfis Admin e Manager.</p>
+    </div>
+
+    <div class="summary-grid">
+        <div>
+            <span>Picagens pendentes</span>
+            <strong>0</strong>
+        </div>
+        <div>
+            <span>Correções</span>
+            <strong>0</strong>
+        </div>
+        <div>
+            <span>Equipas ativas</span>
+            <strong>0</strong>
+        </div>
+    </div>
+</section>

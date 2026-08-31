@@ -1,0 +1,18 @@
+@inherits LayoutComponentBase
+
+<div class="backoffice-layout">
+    <aside class="backoffice-sidebar">
+        <NavMenu />
+    </aside>
+
+    <div class="backoffice-main">
+        <header class="backoffice-topbar">
+            <span>SmartField Time</span>
+            <a class="text-link" href="logout">Sair</a>
+        </header>
+
+        <main class="backoffice-content">
+            @Body
+        </main>
+    </div>
+</div>

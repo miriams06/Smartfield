@@ -1,0 +1,85 @@
+@page "/login"
+@layout MainLayout
+@inject AuthenticationService Authentication
+@inject NavigationManager Navigation
+
+<PageTitle>Login - SmartField Time</PageTitle>
+
+<main class="login-shell">
+    <section class="login-panel">
+        <div>
+            <p class="eyebrow">SmartField Time</p>
+            <h1>Entrar</h1>
+        </div>
+
+        <EditForm Model="model" OnValidSubmit="HandleLoginAsync" class="login-form">
+            <DataAnnotationsValidator />
+
+            <label>
+                Email
+                <InputText class="form-control" @bind-Value="model.Email" type="email" autocomplete="username" />
+            </label>
+            <ValidationMessage For="@(() => model.Email)" />
+
+            <label>
+                Password
+                <InputText class="form-control" @bind-Value="model.Password" type="password" autocomplete="current-password" />
+            </label>
+            <ValidationMessage For="@(() => model.Password)" />
+
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <p class="form-error" role="alert">@errorMessage</p>
+            }
+
+            <button class="btn btn-primary" type="submit" disabled="@isBusy">
+                @(isBusy ? "A entrar..." : "Entrar")
+            </button>
+        </EditForm>
+    </section>
+</main>
+
+@code {
+    private readonly LoginFormModel model = new();
+    private bool isBusy;
+    private string? errorMessage;
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private async Task HandleLoginAsync()
+    {
+        isBusy = true;
+        errorMessage = null;
+
+        try
+        {
+            var success = await Authentication.LoginAsync(model.Email, model.Password, CancellationToken.None);
+            if (!success)
+            {
+                errorMessage = "Email ou password inválidos.";
+                return;
+            }
+
+            Navigation.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl);
+        }
+        catch (HttpRequestException)
+        {
+            errorMessage = "Não foi possível contactar a API SmartField.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private sealed class LoginFormModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required]
+        public string Password { get; set; } = string.Empty;
+    }
+}
