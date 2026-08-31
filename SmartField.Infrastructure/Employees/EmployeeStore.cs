@@ -21,6 +21,14 @@ public sealed class EmployeeStore : IEmployeeStore
         string? search,
         CancellationToken cancellationToken)
     {
+        return await BuildSearchQuery(companyId, search)
+            .ToListAsync(cancellationToken);
+    }
+
+    internal IQueryable<EmployeeDto> BuildSearchQuery(
+        Guid companyId,
+        string? search)
+    {
         var query = dbContext.Employees
             .AsNoTracking()
             .Where(employee => employee.CompanyId == companyId);
@@ -40,11 +48,12 @@ public sealed class EmployeeStore : IEmployeeStore
                     && user.Email.Contains(search)));
         }
 
-        return await Project(query, companyId)
+        query = query
             .OrderByDescending(employee => employee.IsActive)
             .ThenBy(employee => employee.Name)
-            .ThenBy(employee => employee.EmployeeNumber)
-            .ToListAsync(cancellationToken);
+            .ThenBy(employee => employee.EmployeeNumber);
+
+        return Project(query, companyId);
     }
 
     public Task<EmployeeDto?> GetAsync(

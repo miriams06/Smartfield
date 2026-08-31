@@ -21,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SmartField.Infrastructure.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Folder Include="Audit\" />
     <Folder Include="Outbox\" />
   </ItemGroup>
