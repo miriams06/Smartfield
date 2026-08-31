@@ -28,7 +28,9 @@ builder.Services.AddHttpClient("SmartField.Api", client =>
 builder.Services.AddScoped(provider =>
     provider.GetRequiredService<IHttpClientFactory>().CreateClient("SmartField.Api"));
 builder.Services.AddScoped<AuthenticationService>();
+builder.Services.AddScoped<BrowserGeolocationService>();
 builder.Services.AddScoped<EmployeeApiClient>();
+builder.Services.AddScoped<GeolocationApiClient>();
 builder.Services.AddScoped<WorkSiteApiClient>();
 
 await builder.Build().RunAsync();
