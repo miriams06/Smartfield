@@ -1,16 +1,27 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using SmartField.Application.Abstractions;
 using SmartField.Domain.Entities;
+using SmartField.Infrastructure.Identity;
 
 namespace SmartField.Infrastructure.Persistence;
 
-public class SmartFieldDbContext : DbContext
+public class SmartFieldDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
 {
-    public SmartFieldDbContext(DbContextOptions<SmartFieldDbContext> options)
+    private readonly ICurrentCompanyProvider? currentCompanyProvider;
+
+    public SmartFieldDbContext(
+        DbContextOptions<SmartFieldDbContext> options,
+        ICurrentCompanyProvider? currentCompanyProvider = null)
         : base(options)
     {
+        this.currentCompanyProvider = currentCompanyProvider;
     }
 
     public Guid? CurrentCompanyId { get; set; }
+
+    private Guid? CompanyFilterId => CurrentCompanyId ?? currentCompanyProvider?.CompanyId;
 
     public DbSet<Company> Companies => Set<Company>();
 
@@ -43,30 +54,30 @@ public class SmartFieldDbContext : DbContext
     private void ConfigureCompanyFilters(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<CompanySettings>()
-            .HasQueryFilter(entity => CurrentCompanyId.HasValue && entity.CompanyId == CurrentCompanyId.Value);
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
 
         modelBuilder.Entity<Employee>()
-            .HasQueryFilter(entity => CurrentCompanyId.HasValue && entity.CompanyId == CurrentCompanyId.Value);
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
 
         modelBuilder.Entity<WorkSite>()
-            .HasQueryFilter(entity => CurrentCompanyId.HasValue && entity.CompanyId == CurrentCompanyId.Value);
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
 
         modelBuilder.Entity<Project>()
-            .HasQueryFilter(entity => CurrentCompanyId.HasValue && entity.CompanyId == CurrentCompanyId.Value);
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
 
         modelBuilder.Entity<AttendanceEvent>()
-            .HasQueryFilter(entity => CurrentCompanyId.HasValue && entity.CompanyId == CurrentCompanyId.Value);
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
 
         modelBuilder.Entity<AttendanceCorrection>()
-            .HasQueryFilter(entity => CurrentCompanyId.HasValue && entity.CompanyId == CurrentCompanyId.Value);
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
 
         modelBuilder.Entity<AuditLog>()
-            .HasQueryFilter(entity => CurrentCompanyId.HasValue && entity.CompanyId == CurrentCompanyId.Value);
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
 
         modelBuilder.Entity<ExternalReference>()
-            .HasQueryFilter(entity => CurrentCompanyId.HasValue && entity.CompanyId == CurrentCompanyId.Value);
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
 
         modelBuilder.Entity<IntegrationOutbox>()
-            .HasQueryFilter(entity => CurrentCompanyId.HasValue && entity.CompanyId == CurrentCompanyId.Value);
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
     }
 }

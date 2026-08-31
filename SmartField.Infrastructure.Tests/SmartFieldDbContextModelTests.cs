@@ -1,5 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.AspNetCore.Identity;
 using SmartField.Domain.Entities;
+using SmartField.Infrastructure.Identity;
 using SmartField.Infrastructure.Persistence;
 
 namespace SmartField.Infrastructure.Tests;
@@ -29,6 +33,7 @@ public class SmartFieldDbContextModelTests
         using var context = CreateContext();
         var model = context.Model;
 
+        AssertHasIndex(model.FindEntityType(typeof(ApplicationUser))!, true, "CompanyId", "NormalizedEmail");
         AssertHasIndex(model.FindEntityType(typeof(AttendanceEvent))!, false, "CompanyId", "EmployeeId", "ServerTimestampUtc");
         AssertHasIndex(model.FindEntityType(typeof(AttendanceEvent))!, true, "ClientEventId");
         AssertHasIndex(model.FindEntityType(typeof(Employee))!, true, "CompanyId", "EmployeeNumber");
@@ -93,12 +98,37 @@ public class SmartFieldDbContextModelTests
     }
 
     [Fact]
+    public void Model_ConfiguresApplicationUserRelationships()
+    {
+        using var context = CreateContext();
+
+        var applicationUser = context.Model.FindEntityType(typeof(ApplicationUser));
+
+        Assert.NotNull(applicationUser);
+        Assert.Contains(applicationUser.GetForeignKeys(), foreignKey =>
+            foreignKey.PrincipalEntityType.ClrType == typeof(Company)
+            && foreignKey.Properties.Any(property => property.Name == "CompanyId"));
+        Assert.Contains(applicationUser.GetForeignKeys(), foreignKey =>
+            foreignKey.PrincipalEntityType.ClrType == typeof(Employee)
+            && foreignKey.Properties.Any(property => property.Name == "EmployeeId"));
+    }
+
+    [Fact]
     public void Model_ContainsInitialSeedData()
     {
         using var context = CreateContext();
 
-        var companySeed = context.Model.FindEntityType(typeof(Company))!.GetSeedData();
-        var employeeSeed = context.Model.FindEntityType(typeof(Employee))!.GetSeedData();
+        var designTimeModel = context
+            .GetService<IDesignTimeModel>()
+            .Model;
+
+        var companySeed = designTimeModel
+            .FindEntityType(typeof(Company))!
+            .GetSeedData();
+
+        var employeeSeed = designTimeModel
+            .FindEntityType(typeof(Employee))!
+            .GetSeedData();
 
         Assert.Contains(companySeed, seed =>
             seed["Code"]?.ToString() == "SYS-DEMO"
@@ -107,6 +137,24 @@ public class SmartFieldDbContextModelTests
         Assert.Contains(employeeSeed, seed =>
             seed["EmployeeNumber"]?.ToString() == "FUNC001"
             && seed["Name"]?.ToString() == "Funcionário Demo");
+    }
+
+    [Fact]
+    public void Model_ContainsInitialIdentityRoles()
+    {
+        using var context = CreateContext();
+
+        var designTimeModel = context
+            .GetService<IDesignTimeModel>()
+            .Model;
+
+        var roleSeed = designTimeModel
+            .FindEntityType(typeof(IdentityRole<Guid>))!
+            .GetSeedData();
+
+        Assert.Contains(roleSeed, seed => seed["Name"]?.ToString() == SmartFieldRoles.Admin);
+        Assert.Contains(roleSeed, seed => seed["Name"]?.ToString() == SmartFieldRoles.Manager);
+        Assert.Contains(roleSeed, seed => seed["Name"]?.ToString() == SmartFieldRoles.Employee);
     }
 
     private static SmartFieldDbContext CreateContext()
