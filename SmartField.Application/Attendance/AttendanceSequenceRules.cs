@@ -46,6 +46,19 @@ public static class AttendanceSequenceRules
         };
     }
 
+    public static string GetCurrentStateLabel(AttendanceEventType? lastEventType)
+    {
+        return lastEventType switch
+        {
+            null => "SEM REGISTO",
+            AttendanceEventType.ClockIn => "EM TRABALHO",
+            AttendanceEventType.BreakStart => "EM PAUSA",
+            AttendanceEventType.BreakEnd => "EM TRABALHO",
+            AttendanceEventType.ClockOut => "DIA FECHADO",
+            _ => "ESTADO DESCONHECIDO"
+        };
+    }
+
     public static string BuildSequenceError(
         AttendanceEventType? lastEventType,
         AttendanceEventType nextEventType)

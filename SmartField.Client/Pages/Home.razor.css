@@ -1,22 +1,136 @@
+.mobile-dashboard {
+    display: grid;
+    gap: 1rem;
+}
+
+.dashboard-loading,
+.dashboard-hero,
+.state-panel,
+.metrics-grid div,
 .attendance-feedback {
-    margin: 1rem 0;
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.dashboard-loading {
+    padding: 1rem;
+    color: #17324d;
+    font-weight: 800;
+}
+
+.dashboard-hero {
+    padding: 1.25rem;
+}
+
+.dashboard-hero h1 {
+    margin-bottom: 0.35rem;
+    color: #17324d;
+    font-size: 1.9rem;
+}
+
+.dashboard-hero p:last-child {
+    margin-bottom: 0;
+    color: #64748b;
+    font-weight: 700;
+}
+
+.state-panel {
+    display: grid;
+    gap: 0.35rem;
+    padding: 1rem;
+}
+
+.state-panel span,
+.metrics-grid span {
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.state-panel strong {
+    color: #1d796b;
+    font-size: 1.6rem;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+}
+
+.metrics-grid div {
+    display: grid;
+    gap: 0.35rem;
+    min-height: 5rem;
+    padding: 1rem;
+}
+
+.metrics-grid strong {
+    color: #17324d;
+    font-size: 1.3rem;
+}
+
+.attendance-feedback {
     padding: 0.85rem 1rem;
-    border: 1px solid;
-    border-radius: 0.5rem;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .attendance-feedback--success {
     border-color: #8fd0bf;
+    color: #176b57;
     background: #eef9f6;
+}
+
+.attendance-feedback--warning {
+    border-color: #f0c36d;
+    color: #854d0e;
+    background: #fff7e6;
 }
 
 .attendance-feedback--error {
     border-color: #e4a3a0;
+    color: #991b1b;
     background: #fff1f0;
 }
 
-.action-grid button:disabled {
+.dashboard-actions {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.contextual-action,
+.compact-action {
+    min-height: 4.5rem;
+    border: 0;
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.compact-action {
+    min-height: 3rem;
+    padding: 0 1rem;
+}
+
+.contextual-action:disabled,
+.compact-action:disabled {
     cursor: wait;
     opacity: 0.65;
+}
+
+@media (min-width: 480px) {
+    .metrics-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .dashboard-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-actions .contextual-action:first-child:last-child {
+        grid-column: 1 / -1;
+    }
 }

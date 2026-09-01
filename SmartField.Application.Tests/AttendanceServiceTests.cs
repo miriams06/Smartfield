@@ -34,11 +34,53 @@ public class AttendanceServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(EmployeeId, result.Value?.EmployeeId);
+        Assert.Equal("Funcionario Demo", result.Value?.EmployeeName);
         Assert.Equal("Working", result.Value?.CurrentState);
+        Assert.Equal("EM TRABALHO", result.Value?.CurrentStateLabel);
+        Assert.Equal("2026-08-31", result.Value?.LocalDate);
         Assert.Equal("ClockIn", result.Value?.LastEventType);
         Assert.Equal(
             ["BreakStart", "ClockOut"],
             result.Value?.AllowedEventTypes);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ReturnsDailyDurationsEntryAndBreaks()
+    {
+        var store = new FakeAttendanceStore
+        {
+            LastEventType = AttendanceEventType.BreakStart
+        };
+        store.StateEvents.AddRange(
+        [
+            CreateExistingEvent(
+                Guid.NewGuid(),
+                AttendanceEventType.ClockIn,
+                new DateTimeOffset(2026, 8, 31, 8, 0, 0, TimeSpan.Zero)),
+            CreateExistingEvent(
+                Guid.NewGuid(),
+                AttendanceEventType.BreakStart,
+                new DateTimeOffset(2026, 8, 31, 12, 0, 0, TimeSpan.Zero)),
+            CreateExistingEvent(
+                Guid.NewGuid(),
+                AttendanceEventType.BreakEnd,
+                new DateTimeOffset(2026, 8, 31, 12, 30, 0, TimeSpan.Zero)),
+            CreateExistingEvent(
+                Guid.NewGuid(),
+                AttendanceEventType.BreakStart,
+                new DateTimeOffset(2026, 8, 31, 16, 0, 0, TimeSpan.Zero))
+        ]);
+        var service = CreateService(store);
+
+        var result = await service.GetStateAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("OnBreak", result.Value?.CurrentState);
+        Assert.Equal(new DateTimeOffset(2026, 8, 31, 8, 0, 0, TimeSpan.Zero), result.Value?.ClockInAtUtc);
+        Assert.Equal(450, result.Value?.WorkedDurationMinutes);
+        Assert.Equal(90, result.Value?.BreakDurationMinutes);
+        Assert.Equal(2, result.Value?.BreakCount);
+        Assert.Equal(["BreakEnd"], result.Value?.AllowedEventTypes);
     }
 
     [Theory]
@@ -346,17 +388,20 @@ public class AttendanceServiceTests
             null);
     }
 
-    private static AttendanceEvent CreateExistingEvent(Guid clientEventId)
+    private static AttendanceEvent CreateExistingEvent(
+        Guid clientEventId,
+        AttendanceEventType eventType = AttendanceEventType.ClockIn,
+        DateTimeOffset? serverTimestampUtc = null)
     {
         return new AttendanceEvent
         {
             Id = Guid.NewGuid(),
             CompanyId = CompanyId,
             EmployeeId = EmployeeId,
-            EventType = AttendanceEventType.ClockIn,
+            EventType = eventType,
             ClientEventId = clientEventId,
-            ServerTimestampUtc = ServerNow,
-            CreatedAtUtc = ServerNow
+            ServerTimestampUtc = serverTimestampUtc ?? ServerNow,
+            CreatedAtUtc = serverTimestampUtc ?? ServerNow
         };
     }
 
@@ -429,6 +474,8 @@ public class AttendanceServiceTests
 
         public AttendanceEventType? LastEventType { get; set; }
 
+        public List<AttendanceEvent> StateEvents { get; } = [];
+
         public bool ThrowClientEventConflictOnSave { get; set; }
 
         public int SaveChangesCalls { get; private set; }
@@ -480,6 +527,38 @@ public class AttendanceServiceTests
             CancellationToken cancellationToken)
         {
             return Task.FromResult(LastEventType);
+        }
+
+        public Task<AttendanceEmployeeStateReference?> GetEmployeeStateReferenceAsync(
+            Guid companyId,
+            Guid employeeId,
+            CancellationToken cancellationToken)
+        {
+            AttendanceEmployeeStateReference? employee =
+                companyId == CompanyId && employeeId == EmployeeId
+                    ? new AttendanceEmployeeStateReference(
+                        EmployeeId,
+                        "Funcionario Demo",
+                        "Europe/Lisbon")
+                    : null;
+
+            return Task.FromResult(employee);
+        }
+
+        public Task<IReadOnlyList<AttendanceEvent>> GetEventsFromAsync(
+            Guid companyId,
+            Guid employeeId,
+            DateTimeOffset fromUtc,
+            CancellationToken cancellationToken)
+        {
+            var events = StateEvents
+                .Where(attendanceEvent =>
+                    attendanceEvent.CompanyId == companyId
+                    && attendanceEvent.EmployeeId == employeeId
+                    && attendanceEvent.ServerTimestampUtc >= fromUtc)
+                .ToArray();
+
+            return Task.FromResult<IReadOnlyList<AttendanceEvent>>(events);
         }
 
         public void Add(AttendanceEvent attendanceEvent)

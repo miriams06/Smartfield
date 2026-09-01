@@ -1,6 +1,9 @@
 @page "/"
+@page "/app"
 @attribute [Authorize]
 @layout MobileLayout
+@implements IDisposable
+@using System.Globalization
 @using SmartField.Client.Attendance
 @inject AttendanceApiClient AttendanceApiClient
 @inject BrowserGeolocationService BrowserGeolocationService
@@ -8,58 +11,96 @@
 <PageTitle>SmartField Time</PageTitle>
 
 <section class="mobile-dashboard">
-    <div>
-        <p class="eyebrow">SmartField Time</p>
-        <h1>Registo no terreno</h1>
-        <p class="muted">Área móvel preparada para picagens, pausas e tempos por obra.</p>
-    </div>
-
     <AuthorizeView Roles="@AuthConstants.EmployeeRole">
         <Authorized Context="employeeContext">
-            @if (!string.IsNullOrWhiteSpace(_successMessage))
+            @if (_isLoading)
             {
-                <div class="attendance-feedback attendance-feedback--success" role="status">
-                    @_successMessage
+                <div class="dashboard-loading" role="status">
+                    A carregar o teu dia...
                 </div>
             }
-
-            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            else if (_state is null)
             {
-                <div class="attendance-feedback attendance-feedback--error" role="alert">
-                    @_errorMessage
+                <div class="empty-state">
+                    <h1>Não foi possível carregar o estado</h1>
+                    <p>@(_errorMessage ?? "Tenta novamente dentro de momentos.")</p>
+                    <button class="secondary-action compact-action" type="button" @onclick="RefreshStateAsync">
+                        Atualizar
+                    </button>
                 </div>
             }
+            else
+            {
+                <header class="dashboard-hero">
+                    <p class="eyebrow">Hoje</p>
+                    <h1>Olá, @GetFirstName(_state.EmployeeName)</h1>
+                    <p>@FormatLocalDate(_state.LocalDate)</p>
+                </header>
 
-            <div class="action-grid" aria-label="Ações de assiduidade">
-                <button class="primary-action"
-                        type="button"
-                        disabled="@_submitting"
-                        @onclick="ClockInAsync">
-                    Entrada
-                </button>
-                <button class="secondary-action"
-                        type="button"
-                        disabled="@_submitting"
-                        @onclick="BreakStartAsync">
-                    Pausa
-                </button>
-                <button class="secondary-action"
-                        type="button"
-                        disabled="@_submitting"
-                        @onclick="BreakEndAsync">
-                    Retomar
-                </button>
-                <button class="danger-action"
-                        type="button"
-                        disabled="@_submitting"
-                        @onclick="ClockOutAsync">
-                    Saída
-                </button>
-            </div>
+                <div class="state-panel">
+                    <span>Estado</span>
+                    <strong>@_state.CurrentStateLabel</strong>
+                </div>
+
+                <div class="metrics-grid">
+                    <div>
+                        <span>Entrada</span>
+                        <strong>@FormatTime(_state.ClockInAtUtc)</strong>
+                    </div>
+                    <div>
+                        <span>Tempo trabalhado</span>
+                        <strong>@FormatDuration(GetWorkedDurationMinutes())</strong>
+                    </div>
+                    <div>
+                        <span>Pausas</span>
+                        <strong>@FormatBreaks()</strong>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_successMessage))
+                {
+                    <div class="attendance-feedback attendance-feedback--success" role="status">
+                        @_successMessage
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_warningMessage))
+                {
+                    <div class="attendance-feedback attendance-feedback--warning" role="status">
+                        @_warningMessage
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_errorMessage))
+                {
+                    <div class="attendance-feedback attendance-feedback--error" role="alert">
+                        @_errorMessage
+                    </div>
+                }
+
+                <div class="dashboard-actions" aria-label="Ações de assiduidade">
+                    @foreach (var action in GetAvailableActions())
+                    {
+                        <button class="@GetActionClass(action.EventType)"
+                                type="button"
+                                disabled="@_submitting"
+                                @onclick="() => PunchAsync(action)">
+                            @if (_submittingAction == action.EventType)
+                            {
+                                <span>A registar...</span>
+                            }
+                            else
+                            {
+                                <span>@action.Label</span>
+                            }
+                        </button>
+                    }
+                </div>
+            }
         </Authorized>
         <NotAuthorized Context="nonEmployeeContext">
             <div class="empty-state">
-                <h2>Perfil backoffice</h2>
+                <h1>Perfil backoffice</h1>
                 <p>Usa a área Backoffice para validação e gestão.</p>
             </div>
         </NotAuthorized>
@@ -67,19 +108,56 @@
 </section>
 
 @code {
+    private static readonly CultureInfo PortugueseCulture = new("pt-PT");
+
+    private AttendanceStateDto? _state;
+    private Timer? _clockTimer;
+    private bool _isLoading;
     private bool _submitting;
+    private string? _submittingAction;
     private string? _successMessage;
+    private string? _warningMessage;
     private string? _errorMessage;
 
-    private Task ClockInAsync() => PunchAsync("ClockIn", "Entrada");
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshStateAsync();
 
-    private Task BreakStartAsync() => PunchAsync("BreakStart", "Pausa");
+        _clockTimer = new Timer(
+            _ => _ = InvokeAsync(StateHasChanged),
+            null,
+            TimeSpan.FromMinutes(1),
+            TimeSpan.FromMinutes(1));
+    }
 
-    private Task BreakEndAsync() => PunchAsync("BreakEnd", "Retoma");
+    private async Task RefreshStateAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
 
-    private Task ClockOutAsync() => PunchAsync("ClockOut", "Saída");
+        try
+        {
+            _state = await AttendanceApiClient.GetStateAsync(CancellationToken.None);
+        }
+        catch (AttendanceApiException exception)
+        {
+            _errorMessage = exception.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        catch (TaskCanceledException)
+        {
+            _errorMessage = "O carregamento do estado foi cancelado.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
 
-    private async Task PunchAsync(string eventType, string displayName)
+    private async Task PunchAsync(DashboardAction action)
     {
         if (_submitting)
         {
@@ -87,7 +165,9 @@
         }
 
         _submitting = true;
+        _submittingAction = action.EventType;
         _successMessage = null;
+        _warningMessage = null;
         _errorMessage = null;
 
         try
@@ -95,8 +175,13 @@
             var position = await BrowserGeolocationService.GetCurrentPositionAsync(
                 CancellationToken.None);
 
+            if (!position.IsSuccess)
+            {
+                _warningMessage = GetLocationWarning(position.Status);
+            }
+
             var request = new AttendancePunchRequest(
-                eventType,
+                action.EventType,
                 Guid.NewGuid(),
                 DateTimeOffset.UtcNow,
                 position.IsSuccess ? position.Latitude : null,
@@ -110,11 +195,19 @@
                 CancellationToken.None);
 
             var duplicateSuffix = result.IsDuplicate
-                ? " (pedido já registado)"
+                ? " Este pedido já tinha sido registado."
                 : string.Empty;
 
             _successMessage =
-                $"{displayName} registada às {result.ServerTimestampUtc.ToLocalTime():HH:mm:ss}{duplicateSuffix}.";
+                $"{action.CompletedMessage} às {result.ServerTimestampUtc.ToLocalTime():HH:mm}.{duplicateSuffix}";
+
+            if (result.IsInsideGeofence == false)
+            {
+                _warningMessage =
+                    "A picagem ficou registada, mas a localização está fora do local de trabalho.";
+            }
+
+            await RefreshStateAsync();
         }
         catch (AttendanceApiException exception)
         {
@@ -122,15 +215,165 @@
         }
         catch (HttpRequestException)
         {
-            _errorMessage = "Não foi possível comunicar com a API.";
+            _errorMessage = "Não foi possível comunicar com a API do SmartField.";
         }
         catch (TaskCanceledException)
         {
-            _errorMessage = "O pedido de picagem foi cancelado.";
+            _errorMessage = "A picagem foi cancelada antes de terminar.";
         }
         finally
         {
             _submitting = false;
+            _submittingAction = null;
         }
     }
+
+    private IReadOnlyList<DashboardAction> GetAvailableActions()
+    {
+        if (_state is null)
+        {
+            return [];
+        }
+
+        return _state.AllowedEventTypes
+            .Select(ToDashboardAction)
+            .Where(action => action is not null)
+            .Select(action => action!)
+            .ToArray();
+    }
+
+    private static DashboardAction? ToDashboardAction(string eventType)
+    {
+        return eventType switch
+        {
+            "ClockIn" => new DashboardAction(
+                eventType,
+                "Registar entrada",
+                "Entrada registada",
+                "primary-action"),
+            "BreakStart" => new DashboardAction(
+                eventType,
+                "Iniciar pausa",
+                "Pausa iniciada",
+                "secondary-action"),
+            "BreakEnd" => new DashboardAction(
+                eventType,
+                "Terminar pausa",
+                "Pausa terminada",
+                "primary-action"),
+            "ClockOut" => new DashboardAction(
+                eventType,
+                "Registar saída",
+                "Saída registada",
+                "danger-action"),
+            _ => null
+        };
+    }
+
+    private string GetActionClass(string eventType)
+    {
+        var action = ToDashboardAction(eventType);
+        return $"{action?.CssClass ?? "secondary-action"} contextual-action";
+    }
+
+    private int GetWorkedDurationMinutes()
+    {
+        if (_state is null)
+        {
+            return 0;
+        }
+
+        return _state.WorkedDurationMinutes
+            + GetActiveElapsedMinutes("Working");
+    }
+
+    private int GetBreakDurationMinutes()
+    {
+        if (_state is null)
+        {
+            return 0;
+        }
+
+        return _state.BreakDurationMinutes
+            + GetActiveElapsedMinutes("OnBreak");
+    }
+
+    private int GetActiveElapsedMinutes(string state)
+    {
+        if (_state?.CurrentState != state)
+        {
+            return 0;
+        }
+
+        var elapsed = DateTimeOffset.UtcNow - _state.CalculatedAtUtc;
+        return Math.Max(0, (int)Math.Floor(elapsed.TotalMinutes));
+    }
+
+    private string FormatBreaks()
+    {
+        if (_state is null || _state.BreakCount == 0)
+        {
+            return "Sem pausas";
+        }
+
+        return $"{_state.BreakCount} - {FormatDuration(GetBreakDurationMinutes())}";
+    }
+
+    private static string FormatDuration(int totalMinutes)
+    {
+        var hours = totalMinutes / 60;
+        var minutes = totalMinutes % 60;
+
+        return $"{hours}h {minutes:00}m";
+    }
+
+    private static string FormatTime(DateTimeOffset? value)
+    {
+        return value.HasValue
+            ? value.Value.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)
+            : "--:--";
+    }
+
+    private static string FormatLocalDate(string localDate)
+    {
+        return DateOnly.TryParse(localDate, CultureInfo.InvariantCulture, out var date)
+            ? date.ToDateTime(TimeOnly.MinValue)
+                .ToString("dddd, d 'de' MMMM", PortugueseCulture)
+            : "Hoje";
+    }
+
+    private static string GetFirstName(string name)
+    {
+        var trimmed = name.Trim();
+        var spaceIndex = trimmed.IndexOf(' ', StringComparison.Ordinal);
+
+        return spaceIndex > 0 ? trimmed[..spaceIndex] : trimmed;
+    }
+
+    private static string GetLocationWarning(string status)
+    {
+        return status switch
+        {
+            BrowserGeolocationStatus.PermissionDenied =>
+                "Não foi possível obter a localização porque a permissão foi recusada.",
+            BrowserGeolocationStatus.PositionUnavailable =>
+                "Não foi possível obter a localização neste momento.",
+            BrowserGeolocationStatus.Timeout =>
+                "A localização demorou demasiado tempo a responder.",
+            BrowserGeolocationStatus.Unsupported =>
+                "Este dispositivo não suporta geolocalização no browser.",
+            _ => "Não foi possível obter a localização."
+        };
+    }
+
+    public void Dispose()
+    {
+        _clockTimer?.Dispose();
+    }
+
+    private sealed record DashboardAction(
+        string EventType,
+        string Label,
+        string CompletedMessage,
+        string CssClass);
 }

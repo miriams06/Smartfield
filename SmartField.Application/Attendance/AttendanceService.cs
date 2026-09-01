@@ -42,8 +42,36 @@ public sealed class AttendanceService : IAttendanceService
             context.EmployeeId,
             cancellationToken);
 
+        var employee = await attendanceStore.GetEmployeeStateReferenceAsync(
+            context.CompanyId,
+            context.EmployeeId,
+            cancellationToken);
+
+        if (employee is null)
+        {
+            return AttendanceResult<AttendanceStateDto>.Failure(
+                AttendanceError.EmployeeUnavailable);
+        }
+
+        var calculatedAtUtc = timeProvider.GetUtcNow();
+        var companyTimeZone = GetCompanyTimeZone(employee.CompanyTimeZone);
+        var companyNow = TimeZoneInfo.ConvertTime(calculatedAtUtc, companyTimeZone);
+        var localMidnight = new DateTimeOffset(
+            companyNow.Date,
+            companyNow.Offset);
+        var todayEvents = await attendanceStore.GetEventsFromAsync(
+            context.CompanyId,
+            context.EmployeeId,
+            localMidnight.ToUniversalTime(),
+            cancellationToken);
+
         return AttendanceResult<AttendanceStateDto>.Success(
-            BuildState(context.EmployeeId, lastEventType));
+            BuildState(
+                employee,
+                lastEventType,
+                todayEvents,
+                companyNow.Date,
+                calculatedAtUtc));
     }
 
     public async Task<AttendanceResult<AttendancePunchDto>> PunchAsync(
@@ -306,18 +334,133 @@ public sealed class AttendanceService : IAttendanceService
     }
 
     private static AttendanceStateDto BuildState(
-        Guid employeeId,
-        AttendanceEventType? lastEventType)
+        AttendanceEmployeeStateReference employee,
+        AttendanceEventType? lastEventType,
+        IReadOnlyList<AttendanceEvent> todayEvents,
+        DateTime localDate,
+        DateTimeOffset calculatedAtUtc)
     {
+        var metrics = CalculateDailyMetrics(todayEvents, calculatedAtUtc);
+
         return new AttendanceStateDto(
-            employeeId,
+            employee.EmployeeId,
+            employee.EmployeeName,
             AttendanceSequenceRules.GetCurrentState(lastEventType),
+            AttendanceSequenceRules.GetCurrentStateLabel(lastEventType),
+            localDate.ToString("yyyy-MM-dd"),
             lastEventType?.ToString(),
             AttendanceSequenceRules
                 .GetAllowedNextEventTypes(lastEventType)
                 .Select(eventType => eventType.ToString())
-                .ToArray());
+                .ToArray(),
+            metrics.ClockInAtUtc,
+            metrics.WorkedDurationMinutes,
+            metrics.BreakDurationMinutes,
+            metrics.BreakCount,
+            calculatedAtUtc);
     }
+
+    private static DailyAttendanceMetrics CalculateDailyMetrics(
+        IReadOnlyList<AttendanceEvent> events,
+        DateTimeOffset calculatedAtUtc)
+    {
+        DateTimeOffset? clockInAtUtc = null;
+        DateTimeOffset? workStartedAtUtc = null;
+        DateTimeOffset? breakStartedAtUtc = null;
+        var workedDuration = TimeSpan.Zero;
+        var breakDuration = TimeSpan.Zero;
+        var breakCount = 0;
+
+        foreach (var attendanceEvent in events
+            .OrderBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.CreatedAtUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.Id))
+        {
+            switch (attendanceEvent.EventType)
+            {
+                case AttendanceEventType.ClockIn:
+                    clockInAtUtc ??= attendanceEvent.ServerTimestampUtc;
+                    workStartedAtUtc = attendanceEvent.ServerTimestampUtc;
+                    breakStartedAtUtc = null;
+                    break;
+                case AttendanceEventType.BreakStart:
+                    if (workStartedAtUtc.HasValue)
+                    {
+                        workedDuration += attendanceEvent.ServerTimestampUtc
+                            - workStartedAtUtc.Value;
+                    }
+
+                    workStartedAtUtc = null;
+                    breakStartedAtUtc = attendanceEvent.ServerTimestampUtc;
+                    breakCount++;
+                    break;
+                case AttendanceEventType.BreakEnd:
+                    if (breakStartedAtUtc.HasValue)
+                    {
+                        breakDuration += attendanceEvent.ServerTimestampUtc
+                            - breakStartedAtUtc.Value;
+                    }
+
+                    breakStartedAtUtc = null;
+                    workStartedAtUtc = attendanceEvent.ServerTimestampUtc;
+                    break;
+                case AttendanceEventType.ClockOut:
+                    if (workStartedAtUtc.HasValue)
+                    {
+                        workedDuration += attendanceEvent.ServerTimestampUtc
+                            - workStartedAtUtc.Value;
+                    }
+
+                    if (breakStartedAtUtc.HasValue)
+                    {
+                        breakDuration += attendanceEvent.ServerTimestampUtc
+                            - breakStartedAtUtc.Value;
+                    }
+
+                    workStartedAtUtc = null;
+                    breakStartedAtUtc = null;
+                    break;
+            }
+        }
+
+        if (workStartedAtUtc.HasValue)
+        {
+            workedDuration += calculatedAtUtc - workStartedAtUtc.Value;
+        }
+
+        if (breakStartedAtUtc.HasValue)
+        {
+            breakDuration += calculatedAtUtc - breakStartedAtUtc.Value;
+        }
+
+        return new DailyAttendanceMetrics(
+            clockInAtUtc,
+            Math.Max(0, (int)Math.Floor(workedDuration.TotalMinutes)),
+            Math.Max(0, (int)Math.Floor(breakDuration.TotalMinutes)),
+            breakCount);
+    }
+
+    private static TimeZoneInfo GetCompanyTimeZone(string timeZoneId)
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+    }
+
+    private sealed record DailyAttendanceMetrics(
+        DateTimeOffset? ClockInAtUtc,
+        int WorkedDurationMinutes,
+        int BreakDurationMinutes,
+        int BreakCount);
 
     private sealed record AttendanceContext(
         Guid CompanyId,

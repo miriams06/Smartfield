@@ -26,6 +26,17 @@ public interface IAttendanceStore
         Guid employeeId,
         CancellationToken cancellationToken);
 
+    Task<AttendanceEmployeeStateReference?> GetEmployeeStateReferenceAsync(
+        Guid companyId,
+        Guid employeeId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<AttendanceEvent>> GetEventsFromAsync(
+        Guid companyId,
+        Guid employeeId,
+        DateTimeOffset fromUtc,
+        CancellationToken cancellationToken);
+
     void Add(AttendanceEvent attendanceEvent);
 
     void Add(AuditLog auditLog);

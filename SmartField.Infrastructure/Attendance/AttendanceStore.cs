@@ -78,6 +78,45 @@ public sealed class AttendanceStore : IAttendanceStore
             .FirstOrDefaultAsync(cancellationToken);
     }
 
+    public Task<AttendanceEmployeeStateReference?> GetEmployeeStateReferenceAsync(
+        Guid companyId,
+        Guid employeeId,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.Employees
+            .AsNoTracking()
+            .Where(employee =>
+                employee.CompanyId == companyId
+                && employee.Id == employeeId
+                && employee.IsActive)
+            .Select(employee => new AttendanceEmployeeStateReference(
+                employee.Id,
+                employee.Name,
+                dbContext.Companies
+                    .Where(company => company.Id == companyId)
+                    .Select(company => company.TimeZone)
+                    .Single()))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AttendanceEvent>> GetEventsFromAsync(
+        Guid companyId,
+        Guid employeeId,
+        DateTimeOffset fromUtc,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.AttendanceEvents
+            .AsNoTracking()
+            .Where(attendanceEvent =>
+                attendanceEvent.CompanyId == companyId
+                && attendanceEvent.EmployeeId == employeeId
+                && attendanceEvent.ServerTimestampUtc >= fromUtc)
+            .OrderBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.CreatedAtUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.Id)
+            .ToListAsync(cancellationToken);
+    }
+
     public void Add(AttendanceEvent attendanceEvent)
     {
         dbContext.AttendanceEvents.Add(attendanceEvent);

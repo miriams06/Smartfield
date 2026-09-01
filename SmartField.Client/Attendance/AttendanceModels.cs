@@ -30,9 +30,17 @@ public sealed record AttendancePunchDto(
 
 public sealed record AttendanceStateDto(
     Guid EmployeeId,
+    string EmployeeName,
     string CurrentState,
+    string CurrentStateLabel,
+    string LocalDate,
     string? LastEventType,
-    IReadOnlyList<string> AllowedEventTypes);
+    IReadOnlyList<string> AllowedEventTypes,
+    DateTimeOffset? ClockInAtUtc,
+    int WorkedDurationMinutes,
+    int BreakDurationMinutes,
+    int BreakCount,
+    DateTimeOffset CalculatedAtUtc);
 
 public sealed class AttendanceApiException : Exception
 {
