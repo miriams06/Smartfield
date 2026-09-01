@@ -29,6 +29,19 @@ public sealed class AttendanceController : ControllerBase
         return Ok(result.Value);
     }
 
+    [HttpGet("today")]
+    public async Task<ActionResult<AttendanceTodayDto>> GetToday(
+        CancellationToken cancellationToken)
+    {
+        var result = await attendanceService.GetTodayAsync(cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapFailure(result);
+        }
+
+        return Ok(result.Value);
+    }
+
     [HttpPost("punch")]
     public async Task<ActionResult<AttendancePunchDto>> Punch(
         AttendancePunchRequest request,

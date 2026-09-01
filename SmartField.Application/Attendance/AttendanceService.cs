@@ -74,6 +74,67 @@ public sealed class AttendanceService : IAttendanceService
                 calculatedAtUtc));
     }
 
+    public async Task<AttendanceResult<AttendanceTodayDto>> GetTodayAsync(
+        CancellationToken cancellationToken)
+    {
+        var context = await GetAttendanceContextAsync(cancellationToken);
+        if (!context.IsSuccess)
+        {
+            return AttendanceResult<AttendanceTodayDto>.Failure(context.Error);
+        }
+
+        var employee = await attendanceStore.GetEmployeeStateReferenceAsync(
+            context.CompanyId,
+            context.EmployeeId,
+            cancellationToken);
+
+        if (employee is null)
+        {
+            return AttendanceResult<AttendanceTodayDto>.Failure(
+                AttendanceError.EmployeeUnavailable);
+        }
+
+        var calculatedAtUtc = timeProvider.GetUtcNow();
+        var companyTimeZone = GetCompanyTimeZone(employee.CompanyTimeZone);
+        var companyNow = TimeZoneInfo.ConvertTime(calculatedAtUtc, companyTimeZone);
+        var localMidnight = new DateTimeOffset(companyNow.Date, companyNow.Offset);
+        var nextLocalMidnight = localMidnight.AddDays(1);
+
+        var loadedEvents = await attendanceStore.GetEventsFromAsync(
+            context.CompanyId,
+            context.EmployeeId,
+            localMidnight.ToUniversalTime(),
+            cancellationToken);
+        var todayEvents = loadedEvents
+            .Where(attendanceEvent =>
+                attendanceEvent.ServerTimestampUtc < nextLocalMidnight.ToUniversalTime())
+            .OrderBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.CreatedAtUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.Id)
+            .ToArray();
+
+        var metrics = CalculateDailyMetrics(todayEvents, calculatedAtUtc);
+        var lastEventType = todayEvents.LastOrDefault()?.EventType;
+        var clockOut = todayEvents
+            .Where(attendanceEvent => attendanceEvent.EventType == AttendanceEventType.ClockOut)
+            .Select(attendanceEvent => (DateTimeOffset?)attendanceEvent.ServerTimestampUtc)
+            .LastOrDefault();
+
+        return AttendanceResult<AttendanceTodayDto>.Success(
+            new AttendanceTodayDto(
+                metrics.ClockInAtUtc,
+                clockOut,
+                BuildBreaks(todayEvents, calculatedAtUtc),
+                metrics.WorkedDurationMinutes,
+                metrics.BreakDurationMinutes,
+                AttendanceSequenceRules.GetCurrentState(lastEventType),
+                AttendanceSequenceRules
+                    .GetAllowedNextEventTypes(lastEventType)
+                    .Select(eventType => eventType.ToString())
+                    .ToArray(),
+                todayEvents.Select(MapTodayEvent).ToArray()));
+    }
+
     public async Task<AttendanceResult<AttendancePunchDto>> PunchAsync(
         AttendancePunchRequest request,
         CancellationToken cancellationToken)
@@ -333,6 +394,19 @@ public sealed class AttendanceService : IAttendanceService
             isDuplicate);
     }
 
+    private static AttendanceTodayEventDto MapTodayEvent(AttendanceEvent attendanceEvent)
+    {
+        return new AttendanceTodayEventDto(
+            attendanceEvent.Id,
+            attendanceEvent.EventType.ToString(),
+            attendanceEvent.ServerTimestampUtc,
+            attendanceEvent.ClientTimestampUtc,
+            attendanceEvent.WorkSiteId,
+            attendanceEvent.ProjectId,
+            attendanceEvent.IsInsideGeofence,
+            attendanceEvent.DistanceFromWorkSiteMeters);
+    }
+
     private static AttendanceStateDto BuildState(
         AttendanceEmployeeStateReference employee,
         AttendanceEventType? lastEventType,
@@ -358,6 +432,43 @@ public sealed class AttendanceService : IAttendanceService
             metrics.BreakDurationMinutes,
             metrics.BreakCount,
             calculatedAtUtc);
+    }
+
+    private static IReadOnlyList<AttendanceBreakDto> BuildBreaks(
+        IReadOnlyList<AttendanceEvent> events,
+        DateTimeOffset calculatedAtUtc)
+    {
+        var breaks = new List<AttendanceBreakDto>();
+        DateTimeOffset? breakStartedAtUtc = null;
+
+        foreach (var attendanceEvent in events)
+        {
+            if (attendanceEvent.EventType == AttendanceEventType.BreakStart)
+            {
+                breakStartedAtUtc = attendanceEvent.ServerTimestampUtc;
+                continue;
+            }
+
+            if (attendanceEvent.EventType == AttendanceEventType.BreakEnd
+                && breakStartedAtUtc.HasValue)
+            {
+                breaks.Add(new AttendanceBreakDto(
+                    breakStartedAtUtc.Value,
+                    attendanceEvent.ServerTimestampUtc,
+                    ToWholeMinutes(attendanceEvent.ServerTimestampUtc - breakStartedAtUtc.Value)));
+                breakStartedAtUtc = null;
+            }
+        }
+
+        if (breakStartedAtUtc.HasValue)
+        {
+            breaks.Add(new AttendanceBreakDto(
+                breakStartedAtUtc.Value,
+                null,
+                ToWholeMinutes(calculatedAtUtc - breakStartedAtUtc.Value)));
+        }
+
+        return breaks;
     }
 
     private static DailyAttendanceMetrics CalculateDailyMetrics(
@@ -435,9 +546,14 @@ public sealed class AttendanceService : IAttendanceService
 
         return new DailyAttendanceMetrics(
             clockInAtUtc,
-            Math.Max(0, (int)Math.Floor(workedDuration.TotalMinutes)),
-            Math.Max(0, (int)Math.Floor(breakDuration.TotalMinutes)),
+            ToWholeMinutes(workedDuration),
+            ToWholeMinutes(breakDuration),
             breakCount);
+    }
+
+    private static int ToWholeMinutes(TimeSpan duration)
+    {
+        return Math.Max(0, (int)Math.Floor(duration.TotalMinutes));
     }
 
     private static TimeZoneInfo GetCompanyTimeZone(string timeZoneId)
@@ -474,7 +590,7 @@ public sealed class AttendanceService : IAttendanceService
             Guid companyId,
             Guid userId,
             Guid employeeId)
-        {
+    {
             return new AttendanceContext(
                 companyId,
                 userId,
