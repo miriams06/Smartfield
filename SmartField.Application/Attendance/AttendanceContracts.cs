@@ -40,6 +40,31 @@ public sealed record AttendanceStateDto(
     int BreakCount,
     DateTimeOffset CalculatedAtUtc);
 
+public sealed record AttendanceTodayDto(
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    IReadOnlyList<AttendanceBreakDto> Breaks,
+    int WorkedMinutes,
+    int BreakMinutes,
+    string CurrentStatus,
+    IReadOnlyList<string> NextAllowedActions,
+    IReadOnlyList<AttendanceTodayEventDto> Events);
+
+public sealed record AttendanceBreakDto(
+    DateTimeOffset StartedAtUtc,
+    DateTimeOffset? EndedAtUtc,
+    int Minutes);
+
+public sealed record AttendanceTodayEventDto(
+    Guid Id,
+    string EventType,
+    DateTimeOffset ServerTimestampUtc,
+    DateTimeOffset? ClientTimestampUtc,
+    Guid? WorkSiteId,
+    Guid? ProjectId,
+    bool? IsInsideGeofence,
+    decimal? DistanceFromWorkSiteMeters);
+
 public sealed record AttendanceEmployeeStateReference(
     Guid EmployeeId,
     string EmployeeName,
