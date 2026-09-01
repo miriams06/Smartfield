@@ -115,10 +115,7 @@ public sealed class AttendanceService : IAttendanceService
 
         var metrics = CalculateDailyMetrics(todayEvents, calculatedAtUtc);
         var lastEventType = todayEvents.LastOrDefault()?.EventType;
-        var clockOut = todayEvents
-            .Where(attendanceEvent => attendanceEvent.EventType == AttendanceEventType.ClockOut)
-            .Select(attendanceEvent => (DateTimeOffset?)attendanceEvent.ServerTimestampUtc)
-            .LastOrDefault();
+        var clockOut = GetLastClockOut(todayEvents);
 
         return AttendanceResult<AttendanceTodayDto>.Success(
             new AttendanceTodayDto(
@@ -133,6 +130,114 @@ public sealed class AttendanceService : IAttendanceService
                     .Select(eventType => eventType.ToString())
                     .ToArray(),
                 todayEvents.Select(MapTodayEvent).ToArray()));
+    }
+
+    public async Task<AttendanceResult<IReadOnlyList<AttendanceHistoryDayDto>>> GetHistoryAsync(
+        CancellationToken cancellationToken)
+    {
+        var historyContext = await GetHistoryContextAsync(cancellationToken);
+        if (!historyContext.IsSuccess)
+        {
+            return AttendanceResult<IReadOnlyList<AttendanceHistoryDayDto>>.Failure(
+                historyContext.Error);
+        }
+
+        var events = await attendanceStore.GetEventsFromAsync(
+            historyContext.CompanyId,
+            historyContext.EmployeeId,
+            DateTimeOffset.MinValue,
+            cancellationToken);
+
+        var calculatedAtUtc = timeProvider.GetUtcNow();
+        var companyNow = TimeZoneInfo.ConvertTime(
+            calculatedAtUtc,
+            historyContext.CompanyTimeZone);
+        var companyToday = DateOnly.FromDateTime(companyNow.Date);
+
+        var days = events
+            .GroupBy(attendanceEvent =>
+                DateOnly.FromDateTime(
+                    TimeZoneInfo.ConvertTime(
+                        attendanceEvent.ServerTimestampUtc,
+                        historyContext.CompanyTimeZone).Date))
+            .OrderByDescending(group => group.Key)
+            .Select(group =>
+            {
+                var dayEvents = OrderEvents(group).ToArray();
+                var calculationPoint = GetHistoryCalculationPoint(
+                    group.Key,
+                    companyToday,
+                    dayEvents,
+                    calculatedAtUtc);
+                var metrics = CalculateDailyMetrics(dayEvents, calculationPoint);
+
+                return new AttendanceHistoryDayDto(
+                    group.Key.ToString("yyyy-MM-dd"),
+                    metrics.ClockInAtUtc,
+                    GetLastClockOut(dayEvents),
+                    metrics.BreakCount,
+                    metrics.BreakDurationMinutes,
+                    metrics.WorkedDurationMinutes,
+                    HasOutsideGeofence(dayEvents));
+            })
+            .ToArray();
+
+        return AttendanceResult<IReadOnlyList<AttendanceHistoryDayDto>>.Success(days);
+    }
+
+    public async Task<AttendanceResult<AttendanceDayDetailDto>> GetDayAsync(
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var historyContext = await GetHistoryContextAsync(cancellationToken);
+        if (!historyContext.IsSuccess)
+        {
+            return AttendanceResult<AttendanceDayDetailDto>.Failure(
+                historyContext.Error);
+        }
+
+        var dayStartUtc = ConvertLocalDateToUtc(date, historyContext.CompanyTimeZone);
+        var nextDayStartUtc = ConvertLocalDateToUtc(
+            date.AddDays(1),
+            historyContext.CompanyTimeZone);
+        var loadedEvents = await attendanceStore.GetEventsFromAsync(
+            historyContext.CompanyId,
+            historyContext.EmployeeId,
+            dayStartUtc,
+            cancellationToken);
+        var dayEvents = loadedEvents
+            .Where(attendanceEvent => attendanceEvent.ServerTimestampUtc < nextDayStartUtc)
+            .Pipe(OrderEvents)
+            .ToArray();
+
+        var calculatedAtUtc = timeProvider.GetUtcNow();
+        var companyNow = TimeZoneInfo.ConvertTime(
+            calculatedAtUtc,
+            historyContext.CompanyTimeZone);
+        var companyToday = DateOnly.FromDateTime(companyNow.Date);
+        var calculationPoint = GetHistoryCalculationPoint(
+            date,
+            companyToday,
+            dayEvents,
+            calculatedAtUtc);
+        var metrics = CalculateDailyMetrics(dayEvents, calculationPoint);
+        var lastEventType = dayEvents.LastOrDefault()?.EventType;
+
+        return AttendanceResult<AttendanceDayDetailDto>.Success(
+            new AttendanceDayDetailDto(
+                date.ToString("yyyy-MM-dd"),
+                metrics.ClockInAtUtc,
+                GetLastClockOut(dayEvents),
+                BuildBreaks(dayEvents, calculationPoint),
+                metrics.WorkedDurationMinutes,
+                metrics.BreakDurationMinutes,
+                AttendanceSequenceRules.GetCurrentState(lastEventType),
+                AttendanceSequenceRules
+                    .GetAllowedNextEventTypes(lastEventType)
+                    .Select(eventType => eventType.ToString())
+                    .ToArray(),
+                HasOutsideGeofence(dayEvents),
+                dayEvents.Select(MapTodayEvent).ToArray()));
     }
 
     public async Task<AttendanceResult<AttendancePunchDto>> PunchAsync(
@@ -325,6 +430,32 @@ public sealed class AttendanceService : IAttendanceService
             employeeId.Value);
     }
 
+    private async Task<AttendanceHistoryContext> GetHistoryContextAsync(
+        CancellationToken cancellationToken)
+    {
+        var context = await GetAttendanceContextAsync(cancellationToken);
+        if (!context.IsSuccess)
+        {
+            return AttendanceHistoryContext.Failure(context.Error);
+        }
+
+        var employee = await attendanceStore.GetEmployeeStateReferenceAsync(
+            context.CompanyId,
+            context.EmployeeId,
+            cancellationToken);
+
+        if (employee is null)
+        {
+            return AttendanceHistoryContext.Failure(
+                AttendanceError.EmployeeUnavailable);
+        }
+
+        return AttendanceHistoryContext.Success(
+            context.CompanyId,
+            context.EmployeeId,
+            GetCompanyTimeZone(employee.CompanyTimeZone));
+    }
+
     private static AttendanceRequestValidation ValidateRequest(
         AttendancePunchRequest request)
     {
@@ -441,7 +572,7 @@ public sealed class AttendanceService : IAttendanceService
         var breaks = new List<AttendanceBreakDto>();
         DateTimeOffset? breakStartedAtUtc = null;
 
-        foreach (var attendanceEvent in events)
+        foreach (var attendanceEvent in OrderEvents(events))
         {
             if (attendanceEvent.EventType == AttendanceEventType.BreakStart)
             {
@@ -482,10 +613,7 @@ public sealed class AttendanceService : IAttendanceService
         var breakDuration = TimeSpan.Zero;
         var breakCount = 0;
 
-        foreach (var attendanceEvent in events
-            .OrderBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
-            .ThenBy(attendanceEvent => attendanceEvent.CreatedAtUtc)
-            .ThenBy(attendanceEvent => attendanceEvent.Id))
+        foreach (var attendanceEvent in OrderEvents(events))
         {
             switch (attendanceEvent.EventType)
             {
@@ -551,6 +679,54 @@ public sealed class AttendanceService : IAttendanceService
             breakCount);
     }
 
+    private static IEnumerable<AttendanceEvent> OrderEvents(
+        IEnumerable<AttendanceEvent> events)
+    {
+        return events
+            .OrderBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.CreatedAtUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.Id);
+    }
+
+    private static DateTimeOffset? GetLastClockOut(
+        IEnumerable<AttendanceEvent> events)
+    {
+        return events
+            .Where(attendanceEvent => attendanceEvent.EventType == AttendanceEventType.ClockOut)
+            .Select(attendanceEvent => (DateTimeOffset?)attendanceEvent.ServerTimestampUtc)
+            .LastOrDefault();
+    }
+
+    private static bool HasOutsideGeofence(IEnumerable<AttendanceEvent> events)
+    {
+        return events.Any(attendanceEvent => attendanceEvent.IsInsideGeofence == false);
+    }
+
+    private static DateTimeOffset GetHistoryCalculationPoint(
+        DateOnly date,
+        DateOnly companyToday,
+        IReadOnlyList<AttendanceEvent> events,
+        DateTimeOffset calculatedAtUtc)
+    {
+        if (date == companyToday || events.Count == 0)
+        {
+            return calculatedAtUtc;
+        }
+
+        return events[^1].ServerTimestampUtc;
+    }
+
+    private static DateTimeOffset ConvertLocalDateToUtc(
+        DateOnly date,
+        TimeZoneInfo timeZone)
+    {
+        var localDateTime = DateTime.SpecifyKind(
+            date.ToDateTime(TimeOnly.MinValue),
+            DateTimeKind.Unspecified);
+        var utcDateTime = TimeZoneInfo.ConvertTimeToUtc(localDateTime, timeZone);
+        return new DateTimeOffset(utcDateTime, TimeSpan.Zero);
+    }
+
     private static int ToWholeMinutes(TimeSpan duration)
     {
         return Math.Max(0, (int)Math.Floor(duration.TotalMinutes));
@@ -590,7 +766,7 @@ public sealed class AttendanceService : IAttendanceService
             Guid companyId,
             Guid userId,
             Guid employeeId)
-    {
+        {
             return new AttendanceContext(
                 companyId,
                 userId,
@@ -608,7 +784,47 @@ public sealed class AttendanceService : IAttendanceService
         }
     }
 
+    private sealed record AttendanceHistoryContext(
+        Guid CompanyId,
+        Guid EmployeeId,
+        TimeZoneInfo CompanyTimeZone,
+        AttendanceError Error)
+    {
+        public bool IsSuccess => Error == AttendanceError.None;
+
+        public static AttendanceHistoryContext Success(
+            Guid companyId,
+            Guid employeeId,
+            TimeZoneInfo companyTimeZone)
+        {
+            return new AttendanceHistoryContext(
+                companyId,
+                employeeId,
+                companyTimeZone,
+                AttendanceError.None);
+        }
+
+        public static AttendanceHistoryContext Failure(AttendanceError error)
+        {
+            return new AttendanceHistoryContext(
+                Guid.Empty,
+                Guid.Empty,
+                TimeZoneInfo.Utc,
+                error);
+        }
+    }
+
     private sealed record AttendanceRequestValidation(
         AttendanceEventType EventType,
         IReadOnlyDictionary<string, string[]> Errors);
+}
+
+internal static class EnumerablePipeExtensions
+{
+    public static TResult Pipe<TSource, TResult>(
+        this TSource source,
+        Func<TSource, TResult> selector)
+    {
+        return selector(source);
+    }
 }
