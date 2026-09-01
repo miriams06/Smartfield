@@ -31,10 +31,26 @@ public interface IAttendanceStore
         Guid employeeId,
         CancellationToken cancellationToken);
 
+    Task<string?> GetCompanyTimeZoneAsync(
+        Guid companyId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<AttendanceBackofficeEmployeeReference>> GetBackofficeEmployeesAsync(
+        Guid companyId,
+        Guid? employeeId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<AttendanceEvent>> GetEventsFromAsync(
         Guid companyId,
         Guid employeeId,
         DateTimeOffset fromUtc,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<AttendanceEvent>> GetEventsBetweenAsync(
+        Guid companyId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        Guid? employeeId,
         CancellationToken cancellationToken);
 
     void Add(AttendanceEvent attendanceEvent);

@@ -240,6 +240,154 @@ public sealed class AttendanceService : IAttendanceService
                 dayEvents.Select(MapTodayEvent).ToArray()));
     }
 
+    public async Task<AttendanceResult<AttendanceBackofficeDayDto>> GetBackofficeDayAsync(
+        AttendanceBackofficeDayFilter filter,
+        CancellationToken cancellationToken)
+    {
+        var validationErrors = ValidateBackofficeFilter(filter);
+        if (validationErrors.Count > 0)
+        {
+            return AttendanceResult<AttendanceBackofficeDayDto>.Invalid(validationErrors);
+        }
+
+        var companyId = currentCompanyProvider.CompanyId;
+        if (!companyId.HasValue)
+        {
+            return AttendanceResult<AttendanceBackofficeDayDto>.Failure(
+                AttendanceError.CompanyUnavailable);
+        }
+
+        var companyTimeZone = await GetCurrentCompanyTimeZoneAsync(
+            companyId.Value,
+            cancellationToken);
+        if (companyTimeZone is null)
+        {
+            return AttendanceResult<AttendanceBackofficeDayDto>.Failure(
+                AttendanceError.CompanyUnavailable);
+        }
+
+        var employees = await attendanceStore.GetBackofficeEmployeesAsync(
+            companyId.Value,
+            filter.EmployeeId,
+            cancellationToken);
+        var dayEvents = await GetCompanyDayEventsAsync(
+            companyId.Value,
+            filter.Date,
+            companyTimeZone,
+            filter.EmployeeId,
+            cancellationToken);
+        var eventsByEmployee = dayEvents
+            .GroupBy(attendanceEvent => attendanceEvent.EmployeeId)
+            .ToDictionary(
+                group => group.Key,
+                group => OrderEvents(group).ToArray());
+        var calculatedAtUtc = timeProvider.GetUtcNow();
+        var companyToday = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTime(calculatedAtUtc, companyTimeZone).Date);
+
+        var rows = employees
+            .Where(employee => ShouldIncludeBackofficeEmployee(
+                employee,
+                eventsByEmployee,
+                filter.WorkSiteId))
+            .OrderBy(employee => employee.EmployeeName)
+            .ThenBy(employee => employee.EmployeeNumber)
+            .Select(employee =>
+            {
+                eventsByEmployee.TryGetValue(employee.EmployeeId, out var employeeEvents);
+                return BuildBackofficeRow(
+                    employee,
+                    employeeEvents ?? [],
+                    filter.Date,
+                    companyToday,
+                    calculatedAtUtc);
+            })
+            .ToArray();
+
+        return AttendanceResult<AttendanceBackofficeDayDto>.Success(
+            new AttendanceBackofficeDayDto(
+                filter.Date.ToString("yyyy-MM-dd"),
+                rows));
+    }
+
+    public async Task<AttendanceResult<AttendanceBackofficeDayDetailDto>> GetBackofficeDayDetailAsync(
+        Guid employeeId,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        if (employeeId == Guid.Empty)
+        {
+            return AttendanceResult<AttendanceBackofficeDayDetailDto>.Invalid(
+                new Dictionary<string, string[]>
+                {
+                    [nameof(employeeId)] = ["O funcionário é obrigatório."]
+                });
+        }
+
+        var companyId = currentCompanyProvider.CompanyId;
+        if (!companyId.HasValue)
+        {
+            return AttendanceResult<AttendanceBackofficeDayDetailDto>.Failure(
+                AttendanceError.CompanyUnavailable);
+        }
+
+        var companyTimeZone = await GetCurrentCompanyTimeZoneAsync(
+            companyId.Value,
+            cancellationToken);
+        if (companyTimeZone is null)
+        {
+            return AttendanceResult<AttendanceBackofficeDayDetailDto>.Failure(
+                AttendanceError.CompanyUnavailable);
+        }
+
+        var employees = await attendanceStore.GetBackofficeEmployeesAsync(
+            companyId.Value,
+            employeeId,
+            cancellationToken);
+        var employee = employees.SingleOrDefault();
+        if (employee is null)
+        {
+            return AttendanceResult<AttendanceBackofficeDayDetailDto>.Failure(
+                AttendanceError.EmployeeNotFound);
+        }
+
+        var dayEvents = await GetCompanyDayEventsAsync(
+            companyId.Value,
+            date,
+            companyTimeZone,
+            employeeId,
+            cancellationToken);
+        var orderedEvents = OrderEvents(dayEvents).ToArray();
+        var calculatedAtUtc = timeProvider.GetUtcNow();
+        var companyToday = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTime(calculatedAtUtc, companyTimeZone).Date);
+        var calculationPoint = GetHistoryCalculationPoint(
+            date,
+            companyToday,
+            orderedEvents,
+            calculatedAtUtc);
+        var metrics = CalculateDailyMetrics(orderedEvents, calculationPoint);
+        var lastEventType = orderedEvents.LastOrDefault()?.EventType;
+
+        return AttendanceResult<AttendanceBackofficeDayDetailDto>.Success(
+            new AttendanceBackofficeDayDetailDto(
+                date.ToString("yyyy-MM-dd"),
+                employee.EmployeeId,
+                employee.EmployeeNumber,
+                employee.EmployeeName,
+                employee.DefaultWorkSiteId,
+                employee.DefaultWorkSiteName,
+                metrics.ClockInAtUtc,
+                GetLastClockOut(orderedEvents),
+                BuildBreaks(orderedEvents, calculationPoint),
+                metrics.WorkedDurationMinutes,
+                metrics.BreakDurationMinutes,
+                AttendanceSequenceRules.GetCurrentState(lastEventType),
+                AttendanceSequenceRules.GetCurrentStateLabel(lastEventType),
+                HasOutsideGeofence(orderedEvents),
+                orderedEvents.Select(MapTodayEvent).ToArray()));
+    }
+
     public async Task<AttendanceResult<AttendancePunchDto>> PunchAsync(
         AttendancePunchRequest request,
         CancellationToken cancellationToken)
@@ -600,6 +748,105 @@ public sealed class AttendanceService : IAttendanceService
         }
 
         return breaks;
+    }
+
+    private async Task<TimeZoneInfo?> GetCurrentCompanyTimeZoneAsync(
+        Guid companyId,
+        CancellationToken cancellationToken)
+    {
+        var timeZoneId = await attendanceStore.GetCompanyTimeZoneAsync(
+            companyId,
+            cancellationToken);
+
+        return timeZoneId is null
+            ? null
+            : GetCompanyTimeZone(timeZoneId);
+    }
+
+    private async Task<IReadOnlyList<AttendanceEvent>> GetCompanyDayEventsAsync(
+        Guid companyId,
+        DateOnly date,
+        TimeZoneInfo companyTimeZone,
+        Guid? employeeId,
+        CancellationToken cancellationToken)
+    {
+        var dayStartUtc = ConvertLocalDateToUtc(date, companyTimeZone);
+        var nextDayStartUtc = ConvertLocalDateToUtc(date.AddDays(1), companyTimeZone);
+
+        return await attendanceStore.GetEventsBetweenAsync(
+            companyId,
+            dayStartUtc,
+            nextDayStartUtc,
+            employeeId,
+            cancellationToken);
+    }
+
+    private static AttendanceBackofficeEmployeeDayDto BuildBackofficeRow(
+        AttendanceBackofficeEmployeeReference employee,
+        IReadOnlyList<AttendanceEvent> orderedEvents,
+        DateOnly date,
+        DateOnly companyToday,
+        DateTimeOffset calculatedAtUtc)
+    {
+        var calculationPoint = GetHistoryCalculationPoint(
+            date,
+            companyToday,
+            orderedEvents,
+            calculatedAtUtc);
+        var metrics = CalculateDailyMetrics(orderedEvents, calculationPoint);
+        var lastEventType = orderedEvents.LastOrDefault()?.EventType;
+
+        return new AttendanceBackofficeEmployeeDayDto(
+            employee.EmployeeId,
+            employee.EmployeeNumber,
+            employee.EmployeeName,
+            employee.DefaultWorkSiteId,
+            employee.DefaultWorkSiteName,
+            metrics.ClockInAtUtc,
+            GetLastClockOut(orderedEvents),
+            metrics.BreakCount,
+            metrics.BreakDurationMinutes,
+            metrics.WorkedDurationMinutes,
+            AttendanceSequenceRules.GetCurrentState(lastEventType),
+            AttendanceSequenceRules.GetCurrentStateLabel(lastEventType),
+            HasOutsideGeofence(orderedEvents));
+    }
+
+    private static bool ShouldIncludeBackofficeEmployee(
+        AttendanceBackofficeEmployeeReference employee,
+        IReadOnlyDictionary<Guid, AttendanceEvent[]> eventsByEmployee,
+        Guid? workSiteId)
+    {
+        if (!workSiteId.HasValue)
+        {
+            return true;
+        }
+
+        if (employee.DefaultWorkSiteId == workSiteId.Value)
+        {
+            return true;
+        }
+
+        return eventsByEmployee.TryGetValue(employee.EmployeeId, out var events)
+            && events.Any(attendanceEvent => attendanceEvent.WorkSiteId == workSiteId.Value);
+    }
+
+    private static IReadOnlyDictionary<string, string[]> ValidateBackofficeFilter(
+        AttendanceBackofficeDayFilter filter)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (filter.EmployeeId == Guid.Empty)
+        {
+            errors[nameof(filter.EmployeeId)] = ["O funcionário selecionado não é válido."];
+        }
+
+        if (filter.WorkSiteId == Guid.Empty)
+        {
+            errors[nameof(filter.WorkSiteId)] = ["O local de trabalho selecionado não é válido."];
+        }
+
+        return errors;
     }
 
     private static DailyAttendanceMetrics CalculateDailyMetrics(

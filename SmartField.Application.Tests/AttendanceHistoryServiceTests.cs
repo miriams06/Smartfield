@@ -247,6 +247,31 @@ public class AttendanceHistoryServiceTests
                     "UTC"));
         }
 
+        public Task<string?> GetCompanyTimeZoneAsync(
+            Guid companyId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<string?>(companyId == CompanyId ? "UTC" : null);
+        }
+
+        public Task<IReadOnlyList<AttendanceBackofficeEmployeeReference>> GetBackofficeEmployeesAsync(
+            Guid companyId,
+            Guid? employeeId,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<AttendanceBackofficeEmployeeReference> employees =
+                companyId == CompanyId && (!employeeId.HasValue || employeeId.Value == EmployeeId)
+                    ? [new AttendanceBackofficeEmployeeReference(
+                        EmployeeId,
+                        "FUNC001",
+                        "Funcionario Demo",
+                        null,
+                        null)]
+                    : [];
+
+            return Task.FromResult(employees);
+        }
+
         public Task<IReadOnlyList<AttendanceEvent>> GetEventsFromAsync(
             Guid companyId,
             Guid employeeId,
@@ -258,6 +283,24 @@ public class AttendanceHistoryServiceTests
                     attendanceEvent.CompanyId == companyId
                     && attendanceEvent.EmployeeId == employeeId
                     && attendanceEvent.ServerTimestampUtc >= fromUtc)
+                .OrderBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
+                .ToArray();
+            return Task.FromResult(result);
+        }
+
+        public Task<IReadOnlyList<AttendanceEvent>> GetEventsBetweenAsync(
+            Guid companyId,
+            DateTimeOffset fromUtc,
+            DateTimeOffset toUtc,
+            Guid? employeeId,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<AttendanceEvent> result = Events
+                .Where(attendanceEvent =>
+                    attendanceEvent.CompanyId == companyId
+                    && attendanceEvent.ServerTimestampUtc >= fromUtc
+                    && attendanceEvent.ServerTimestampUtc < toUtc
+                    && (!employeeId.HasValue || attendanceEvent.EmployeeId == employeeId.Value))
                 .OrderBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
                 .ToArray();
             return Task.FromResult(result);

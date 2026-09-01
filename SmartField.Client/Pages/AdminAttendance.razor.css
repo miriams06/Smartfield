@@ -1,0 +1,239 @@
+.admin-attendance-page {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.admin-attendance-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.admin-attendance-toolbar,
+.admin-attendance-state,
+.admin-attendance-table-wrapper,
+.admin-attendance-detail {
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.admin-attendance-toolbar {
+    display: grid;
+    grid-template-columns: minmax(10rem, 0.8fr) minmax(12rem, 1fr) minmax(12rem, 1fr) auto;
+    gap: 0.85rem;
+    align-items: end;
+    padding: 1rem;
+}
+
+.admin-attendance-toolbar label {
+    display: grid;
+    gap: 0.35rem;
+    font-weight: 700;
+}
+
+.admin-attendance-toolbar__actions {
+    display: flex;
+    gap: 0.6rem;
+}
+
+.admin-attendance-message,
+.admin-attendance-state {
+    padding: 0.9rem 1rem;
+}
+
+.admin-attendance-state {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.admin-attendance-message--error {
+    border-radius: 8px;
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+.admin-attendance-table-wrapper {
+    overflow-x: auto;
+}
+
+.admin-attendance-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-attendance-table th,
+.admin-attendance-table td {
+    padding: 0.8rem;
+    border-bottom: 1px solid #e4e9f0;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.admin-attendance-table th {
+    color: #475569;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.admin-attendance-table tr.is-selected {
+    background: #f1f8f7;
+}
+
+.admin-attendance-table td small,
+.admin-attendance-table td strong {
+    display: block;
+}
+
+.admin-attendance-table td small {
+    margin-top: 0.2rem;
+    color: #64748b;
+}
+
+.attendance-status,
+.attendance-warning {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    min-height: 1.65rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.attendance-status--working {
+    color: #176b57;
+    background: #def7ec;
+}
+
+.attendance-status--break {
+    color: #315f7d;
+    background: #dbeafe;
+}
+
+.attendance-status--closed {
+    color: #475569;
+    background: #e2e8f0;
+}
+
+.attendance-status--empty {
+    color: #7c2d12;
+    background: #ffedd5;
+}
+
+.attendance-warning {
+    color: #92400e;
+    background: #fef3c7;
+}
+
+.admin-attendance-detail {
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+    box-shadow: 0 16px 38px rgba(31, 41, 51, 0.08);
+}
+
+.admin-attendance-detail__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.admin-attendance-detail__header h2 {
+    margin-bottom: 0.2rem;
+}
+
+.admin-attendance-detail__totals {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.admin-attendance-detail__totals div {
+    padding: 0.75rem;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.admin-attendance-detail__totals span,
+.admin-attendance-detail__totals strong {
+    display: block;
+}
+
+.admin-attendance-detail__totals span {
+    color: #64748b;
+    font-size: 0.8rem;
+}
+
+.admin-attendance-detail__totals strong {
+    margin-top: 0.2rem;
+    color: #17324d;
+}
+
+.admin-attendance-detail__section h3 {
+    margin: 0 0 0.55rem;
+    font-size: 1rem;
+}
+
+.admin-attendance-breaks,
+.admin-attendance-events {
+    display: grid;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.admin-attendance-breaks li,
+.admin-attendance-events li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.admin-attendance-events li > div {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.admin-attendance-events span,
+.admin-attendance-breaks span {
+    color: #64748b;
+}
+
+@media (max-width: 1080px) {
+    .admin-attendance-toolbar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-attendance-detail__totals {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .admin-attendance-header,
+    .admin-attendance-detail__header,
+    .admin-attendance-toolbar__actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .admin-attendance-toolbar {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-attendance-toolbar__actions {
+        display: grid;
+    }
+}

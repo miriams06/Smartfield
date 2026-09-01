@@ -86,10 +86,58 @@ public sealed record AttendanceDayDetailDto(
     bool HasOutsideGeofence,
     IReadOnlyList<AttendanceTodayEventDto> Events);
 
+public sealed record AttendanceBackofficeDayFilter(
+    DateOnly Date,
+    Guid? EmployeeId,
+    Guid? WorkSiteId);
+
+public sealed record AttendanceBackofficeDayDto(
+    string Date,
+    IReadOnlyList<AttendanceBackofficeEmployeeDayDto> Employees);
+
+public sealed record AttendanceBackofficeEmployeeDayDto(
+    Guid EmployeeId,
+    string EmployeeNumber,
+    string EmployeeName,
+    Guid? DefaultWorkSiteId,
+    string? DefaultWorkSiteName,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    int BreakCount,
+    int BreakMinutes,
+    int WorkedMinutes,
+    string CurrentStatus,
+    string CurrentStatusLabel,
+    bool HasOutsideGeofence);
+
+public sealed record AttendanceBackofficeDayDetailDto(
+    string Date,
+    Guid EmployeeId,
+    string EmployeeNumber,
+    string EmployeeName,
+    Guid? DefaultWorkSiteId,
+    string? DefaultWorkSiteName,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    IReadOnlyList<AttendanceBreakDto> Breaks,
+    int WorkedMinutes,
+    int BreakMinutes,
+    string CurrentStatus,
+    string CurrentStatusLabel,
+    bool HasOutsideGeofence,
+    IReadOnlyList<AttendanceTodayEventDto> Events);
+
 public sealed record AttendanceEmployeeStateReference(
     Guid EmployeeId,
     string EmployeeName,
     string CompanyTimeZone);
+
+public sealed record AttendanceBackofficeEmployeeReference(
+    Guid EmployeeId,
+    string EmployeeNumber,
+    string EmployeeName,
+    Guid? DefaultWorkSiteId,
+    string? DefaultWorkSiteName);
 
 public enum AttendanceError
 {
@@ -102,7 +150,8 @@ public enum AttendanceError
     GeofenceRejected = 6,
     WorkSiteNotFound = 7,
     ProjectNotFound = 8,
-    ClientEventConflict = 9
+    ClientEventConflict = 9,
+    EmployeeNotFound = 10
 }
 
 public sealed record AttendanceResult<T>(

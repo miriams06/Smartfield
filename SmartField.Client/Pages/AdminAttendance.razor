@@ -1,0 +1,482 @@
+@page "/admin/attendance"
+@attribute [Authorize(Roles = AuthConstants.BackofficeRoles)]
+@layout BackofficeLayout
+@using System.Globalization
+@using SmartField.Client.Attendance
+@using SmartField.Client.Employees
+@using SmartField.Client.WorkSites
+@inject AttendanceApiClient AttendanceApiClient
+@inject EmployeeApiClient EmployeeApiClient
+@inject WorkSiteApiClient WorkSiteApiClient
+
+<PageTitle>Assiduidade - SmartField Time</PageTitle>
+
+<section class="admin-attendance-page">
+    <header class="admin-attendance-header">
+        <div>
+            <p class="eyebrow">Backoffice</p>
+            <h1>Assiduidade</h1>
+            <p class="muted">Validar o estado diário das equipas no terreno.</p>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="admin-attendance-message admin-attendance-message--error" role="alert">
+            @_errorMessage
+        </div>
+    }
+
+    <div class="admin-attendance-toolbar">
+        <label>
+            Data
+            <input class="form-control"
+                   type="date"
+                   value="@_selectedDate"
+                   @onchange="HandleDateChanged"
+                   disabled="@_isBusy" />
+        </label>
+
+        <label>
+            Funcionário
+            <select class="form-control" @bind="_selectedEmployeeId" disabled="@_isBusy">
+                <option value="">Todos</option>
+                @foreach (var employee in _employees)
+                {
+                    <option value="@employee.Id">@employee.Name</option>
+                }
+            </select>
+        </label>
+
+        <label>
+            Local de trabalho
+            <select class="form-control" @bind="_selectedWorkSiteId" disabled="@_isBusy">
+                <option value="">Todos</option>
+                @foreach (var workSite in _workSites)
+                {
+                    <option value="@workSite.Id">@workSite.Code — @workSite.Name</option>
+                }
+            </select>
+        </label>
+
+        <div class="admin-attendance-toolbar__actions">
+            <button class="btn btn-primary" type="button" @onclick="LoadDayAsync" disabled="@_isBusy">
+                @(_isLoading ? "A carregar..." : "Filtrar")
+            </button>
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearFiltersAsync" disabled="@_isBusy">
+                Limpar
+            </button>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="admin-attendance-state" role="status">A carregar assiduidade...</div>
+    }
+    else if (_day is null)
+    {
+        <div class="admin-attendance-state">
+            <strong>Sem dados carregados</strong>
+            <span>Escolhe os filtros para consultar a assiduidade diária.</span>
+        </div>
+    }
+    else if (_day.Employees.Count == 0)
+    {
+        <div class="admin-attendance-state">
+            <strong>Sem funcionários</strong>
+            <span>Não existem registos para os filtros selecionados.</span>
+        </div>
+    }
+    else
+    {
+        <div class="admin-attendance-table-wrapper">
+            <table class="admin-attendance-table">
+                <thead>
+                    <tr>
+                        <th>Funcionário</th>
+                        <th>Local habitual</th>
+                        <th>Entrada</th>
+                        <th>Saída</th>
+                        <th>Total diário</th>
+                        <th>Pausas</th>
+                        <th>Estado</th>
+                        <th>Avisos</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _day.Employees)
+                    {
+                        <tr class="@(_selectedEmployeeDetailId == row.EmployeeId ? "is-selected" : string.Empty)">
+                            <td>
+                                <strong>@row.EmployeeName</strong>
+                                <small>@row.EmployeeNumber</small>
+                            </td>
+                            <td>@(row.DefaultWorkSiteName ?? "—")</td>
+                            <td>@FormatTime(row.ClockIn)</td>
+                            <td>@FormatTime(row.ClockOut)</td>
+                            <td>@FormatDuration(row.WorkedMinutes)</td>
+                            <td>@FormatBreakSummary(row.BreakCount, row.BreakMinutes)</td>
+                            <td>
+                                <span class="attendance-status @GetStatusClass(row.CurrentStatus)">
+                                    @row.CurrentStatusLabel
+                                </span>
+                            </td>
+                            <td>
+                                @if (row.HasOutsideGeofence)
+                                {
+                                    <span class="attendance-warning">Fora da geofence</span>
+                                }
+                                else
+                                {
+                                    <span class="muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        type="button"
+                                        @onclick="() => ToggleDetailAsync(row)"
+                                        disabled="@_isBusy">
+                                    @(_selectedEmployeeDetailId == row.EmployeeId ? "Fechar" : "Detalhe")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (_selectedEmployeeDetailId.HasValue)
+    {
+        <aside class="admin-attendance-detail" aria-label="Detalhe de assiduidade">
+            @if (_isLoadingDetail)
+            {
+                <div class="admin-attendance-state" role="status">A carregar detalhe...</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(_detailErrorMessage))
+            {
+                <div class="admin-attendance-message admin-attendance-message--error" role="alert">
+                    @_detailErrorMessage
+                </div>
+            }
+            else if (_detail is not null)
+            {
+                <header class="admin-attendance-detail__header">
+                    <div>
+                        <p class="eyebrow">Detalhe diário</p>
+                        <h2>@_detail.EmployeeName</h2>
+                        <p class="muted">
+                            @FormatDate(_detail.Date) · @(_detail.DefaultWorkSiteName ?? "Sem local habitual")
+                        </p>
+                    </div>
+                    @if (_detail.HasOutsideGeofence)
+                    {
+                        <span class="attendance-warning">Fora da geofence</span>
+                    }
+                </header>
+
+                <div class="admin-attendance-detail__totals">
+                    <div>
+                        <span>Entrada</span>
+                        <strong>@FormatTime(_detail.ClockIn)</strong>
+                    </div>
+                    <div>
+                        <span>Saída</span>
+                        <strong>@FormatTime(_detail.ClockOut)</strong>
+                    </div>
+                    <div>
+                        <span>Total diário</span>
+                        <strong>@FormatDuration(_detail.WorkedMinutes)</strong>
+                    </div>
+                    <div>
+                        <span>Pausas</span>
+                        <strong>@FormatBreakSummary(_detail.Breaks.Count, _detail.BreakMinutes)</strong>
+                    </div>
+                    <div>
+                        <span>Estado</span>
+                        <strong>@_detail.CurrentStatusLabel</strong>
+                    </div>
+                </div>
+
+                @if (_detail.Breaks.Count > 0)
+                {
+                    <section class="admin-attendance-detail__section">
+                        <h3>Pausas</h3>
+                        <ul class="admin-attendance-breaks">
+                            @foreach (var pause in _detail.Breaks)
+                            {
+                                <li>
+                                    <span>@FormatTime(pause.StartedAtUtc) → @FormatTime(pause.EndedAtUtc)</span>
+                                    <strong>@FormatDuration(pause.Minutes)</strong>
+                                </li>
+                            }
+                        </ul>
+                    </section>
+                }
+
+                <section class="admin-attendance-detail__section">
+                    <h3>Eventos originais</h3>
+                    @if (_detail.Events.Count == 0)
+                    {
+                        <p class="muted">Sem eventos para este dia.</p>
+                    }
+                    else
+                    {
+                        <ul class="admin-attendance-events">
+                            @foreach (var attendanceEvent in _detail.Events)
+                            {
+                                <li>
+                                    <div>
+                                        <strong>@GetEventLabel(attendanceEvent.EventType)</strong>
+                                        <span>
+                                            @FormatTime(attendanceEvent.ServerTimestampUtc)
+                                            · @FormatWorkSite(attendanceEvent.WorkSiteId)
+                                        </span>
+                                    </div>
+                                    @if (attendanceEvent.IsInsideGeofence == false)
+                                    {
+                                        <span class="attendance-warning">Fora da geofence</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            }
+        </aside>
+    }
+</section>
+
+@code {
+    private static readonly CultureInfo PortugueseCulture = new("pt-PT");
+
+    private IReadOnlyList<EmployeeDto> _employees = [];
+    private IReadOnlyList<WorkSiteDto> _workSites = [];
+    private AttendanceBackofficeDayDto? _day;
+    private AttendanceBackofficeDayDetailDto? _detail;
+    private string _selectedDate = DateOnly.FromDateTime(DateTime.Today)
+        .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private string? _selectedEmployeeId;
+    private string? _selectedWorkSiteId;
+    private Guid? _selectedEmployeeDetailId;
+    private string? _errorMessage;
+    private string? _detailErrorMessage;
+    private bool _isLoading;
+    private bool _isLoadingDetail;
+    private bool _isBusy => _isLoading || _isLoadingDetail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInitialDataAsync();
+    }
+
+    private async Task LoadInitialDataAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var employeesTask = EmployeeApiClient.SearchAsync(null, CancellationToken.None);
+            var workSitesTask = WorkSiteApiClient.SearchAsync(null, CancellationToken.None);
+            var dayTask = AttendanceApiClient.GetBackofficeDayAsync(
+                _selectedDate,
+                null,
+                null,
+                CancellationToken.None);
+
+            await Task.WhenAll(employeesTask, workSitesTask, dayTask);
+
+            _employees = await employeesTask;
+            _workSites = await workSitesTask;
+            _day = await dayTask;
+        }
+        catch (AttendanceApiException exception)
+        {
+            _errorMessage = exception.Message;
+        }
+        catch (EmployeeApiException exception)
+        {
+            _errorMessage = exception.Message;
+        }
+        catch (WorkSiteApiException exception)
+        {
+            _errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            _errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadDayAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        _detailErrorMessage = null;
+        _selectedEmployeeDetailId = null;
+        _detail = null;
+
+        try
+        {
+            _day = await AttendanceApiClient.GetBackofficeDayAsync(
+                _selectedDate,
+                ParseOptionalGuid(_selectedEmployeeId),
+                ParseOptionalGuid(_selectedWorkSiteId),
+                CancellationToken.None);
+        }
+        catch (AttendanceApiException exception)
+        {
+            _errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            _errorMessage = "Não foi possível carregar a assiduidade.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        _selectedEmployeeId = null;
+        _selectedWorkSiteId = null;
+        await LoadDayAsync();
+    }
+
+    private void HandleDateChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            _selectedDate = value;
+        }
+    }
+
+    private async Task ToggleDetailAsync(AttendanceBackofficeEmployeeDayDto row)
+    {
+        if (_selectedEmployeeDetailId == row.EmployeeId)
+        {
+            _selectedEmployeeDetailId = null;
+            _detail = null;
+            _detailErrorMessage = null;
+            return;
+        }
+
+        _selectedEmployeeDetailId = row.EmployeeId;
+        _detail = null;
+        _detailErrorMessage = null;
+        _isLoadingDetail = true;
+
+        try
+        {
+            _detail = await AttendanceApiClient.GetBackofficeDayDetailAsync(
+                _selectedDate,
+                row.EmployeeId,
+                CancellationToken.None);
+        }
+        catch (AttendanceApiException exception)
+        {
+            _detailErrorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            _detailErrorMessage = "Não foi possível carregar o detalhe deste funcionário.";
+        }
+        finally
+        {
+            _isLoadingDetail = false;
+        }
+    }
+
+    private static Guid? ParseOptionalGuid(string? value)
+    {
+        return Guid.TryParse(value, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static string FormatDate(string date)
+    {
+        return DateOnly.TryParseExact(
+            date,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed)
+            ? parsed.ToDateTime(TimeOnly.MinValue)
+                .ToString("dddd, d 'de' MMMM 'de' yyyy", PortugueseCulture)
+            : date;
+    }
+
+    private static string FormatTime(DateTimeOffset? value)
+    {
+        return value.HasValue
+            ? value.Value.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)
+            : "--:--";
+    }
+
+    private static string FormatDuration(int totalMinutes)
+    {
+        var hours = totalMinutes / 60;
+        var minutes = totalMinutes % 60;
+        return $"{hours}h {minutes:00}m";
+    }
+
+    private static string FormatBreakSummary(int count, int minutes)
+    {
+        if (count == 0)
+        {
+            return "Sem pausas";
+        }
+
+        var noun = count == 1 ? "pausa" : "pausas";
+        return $"{count} {noun} · {FormatDuration(minutes)}";
+    }
+
+    private string FormatWorkSite(Guid? workSiteId)
+    {
+        if (!workSiteId.HasValue)
+        {
+            return "Sem local";
+        }
+
+        var workSite = _workSites.SingleOrDefault(item => item.Id == workSiteId.Value);
+        return workSite is null
+            ? "Local não encontrado"
+            : $"{workSite.Code} — {workSite.Name}";
+    }
+
+    private static string GetStatusClass(string status)
+    {
+        return status switch
+        {
+            "Working" => "attendance-status--working",
+            "OnBreak" => "attendance-status--break",
+            "Closed" => "attendance-status--closed",
+            _ => "attendance-status--empty"
+        };
+    }
+
+    private static string GetEventLabel(string eventType)
+    {
+        return eventType switch
+        {
+            "ClockIn" => "Entrada",
+            "BreakStart" => "Início de pausa",
+            "BreakEnd" => "Fim de pausa",
+            "ClockOut" => "Saída",
+            _ => eventType
+        };
+    }
+}

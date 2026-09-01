@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using SmartField.Api.Authentication;
 using SmartField.Api.Controllers;
 
 namespace SmartField.Api.Tests;
@@ -49,5 +50,39 @@ public class AttendanceControllerTests
 
         Assert.NotNull(attribute);
         Assert.Equal("state", attribute.Template);
+    }
+
+    [Fact]
+    public void Controller_ExposesBackofficeDayRouteForBackofficePolicy()
+    {
+        var method = typeof(AttendanceController)
+            .GetMethod(nameof(AttendanceController.GetBackofficeDay));
+        var routeAttribute = method?
+            .GetCustomAttributes(typeof(HttpGetAttribute), inherit: false)
+            .OfType<HttpMethodAttribute>()
+            .SingleOrDefault();
+        var authorizeAttribute = method?
+            .GetCustomAttribute<AuthorizeAttribute>();
+
+        Assert.NotNull(routeAttribute);
+        Assert.Equal("admin/day", routeAttribute.Template);
+        Assert.Equal(SmartFieldPolicies.Backoffice, authorizeAttribute?.Policy);
+    }
+
+    [Fact]
+    public void Controller_ExposesBackofficeDayDetailRouteForBackofficePolicy()
+    {
+        var method = typeof(AttendanceController)
+            .GetMethod(nameof(AttendanceController.GetBackofficeDayDetail));
+        var routeAttribute = method?
+            .GetCustomAttributes(typeof(HttpGetAttribute), inherit: false)
+            .OfType<HttpMethodAttribute>()
+            .SingleOrDefault();
+        var authorizeAttribute = method?
+            .GetCustomAttribute<AuthorizeAttribute>();
+
+        Assert.NotNull(routeAttribute);
+        Assert.Equal("admin/day/{date}/employees/{employeeId}", routeAttribute.Template);
+        Assert.Equal(SmartFieldPolicies.Backoffice, authorizeAttribute?.Policy);
     }
 }

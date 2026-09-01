@@ -476,6 +476,10 @@ public class AttendanceServiceTests
 
         public List<AttendanceEvent> StateEvents { get; } = [];
 
+        public string? CompanyTimeZone { get; set; } = "Europe/Lisbon";
+
+        public List<AttendanceBackofficeEmployeeReference> BackofficeEmployees { get; } = [];
+
         public bool ThrowClientEventConflictOnSave { get; set; }
 
         public int SaveChangesCalls { get; private set; }
@@ -545,6 +549,37 @@ public class AttendanceServiceTests
             return Task.FromResult(employee);
         }
 
+        public Task<string?> GetCompanyTimeZoneAsync(
+            Guid companyId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(companyId == CompanyId ? CompanyTimeZone : null);
+        }
+
+        public Task<IReadOnlyList<AttendanceBackofficeEmployeeReference>> GetBackofficeEmployeesAsync(
+            Guid companyId,
+            Guid? employeeId,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<AttendanceBackofficeEmployeeReference> employees =
+                BackofficeEmployees.Count > 0
+                    ? BackofficeEmployees
+                    : [new AttendanceBackofficeEmployeeReference(
+                        EmployeeId,
+                        "FUNC001",
+                        "Funcionario Demo",
+                        WorkSiteId,
+                        "Sede")];
+
+            employees = employees
+                .Where(employee =>
+                    companyId == CompanyId
+                    && (!employeeId.HasValue || employee.EmployeeId == employeeId.Value))
+                .ToArray();
+
+            return Task.FromResult(employees);
+        }
+
         public Task<IReadOnlyList<AttendanceEvent>> GetEventsFromAsync(
             Guid companyId,
             Guid employeeId,
@@ -556,6 +591,24 @@ public class AttendanceServiceTests
                     attendanceEvent.CompanyId == companyId
                     && attendanceEvent.EmployeeId == employeeId
                     && attendanceEvent.ServerTimestampUtc >= fromUtc)
+                .ToArray();
+
+            return Task.FromResult<IReadOnlyList<AttendanceEvent>>(events);
+        }
+
+        public Task<IReadOnlyList<AttendanceEvent>> GetEventsBetweenAsync(
+            Guid companyId,
+            DateTimeOffset fromUtc,
+            DateTimeOffset toUtc,
+            Guid? employeeId,
+            CancellationToken cancellationToken)
+        {
+            var events = StateEvents
+                .Where(attendanceEvent =>
+                    attendanceEvent.CompanyId == companyId
+                    && attendanceEvent.ServerTimestampUtc >= fromUtc
+                    && attendanceEvent.ServerTimestampUtc < toUtc
+                    && (!employeeId.HasValue || attendanceEvent.EmployeeId == employeeId.Value))
                 .ToArray();
 
             return Task.FromResult<IReadOnlyList<AttendanceEvent>>(events);

@@ -50,6 +50,50 @@ public sealed class AttendanceApiClient
             cancellationToken);
     }
 
+    public async Task<AttendanceBackofficeDayDto> GetBackofficeDayAsync(
+        string date,
+        Guid? employeeId,
+        Guid? workSiteId,
+        CancellationToken cancellationToken)
+    {
+        var query = new List<string>
+        {
+            $"date={Uri.EscapeDataString(date)}"
+        };
+
+        if (employeeId.HasValue)
+        {
+            query.Add($"employeeId={employeeId.Value}");
+        }
+
+        if (workSiteId.HasValue)
+        {
+            query.Add($"workSiteId={workSiteId.Value}");
+        }
+
+        using var response = await httpClient.GetAsync(
+            $"api/attendance/admin/day?{string.Join("&", query)}",
+            cancellationToken);
+
+        return await ReadRequiredAsync<AttendanceBackofficeDayDto>(
+            response,
+            cancellationToken);
+    }
+
+    public async Task<AttendanceBackofficeDayDetailDto> GetBackofficeDayDetailAsync(
+        string date,
+        Guid employeeId,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(
+            $"api/attendance/admin/day/{Uri.EscapeDataString(date)}/employees/{employeeId}",
+            cancellationToken);
+
+        return await ReadRequiredAsync<AttendanceBackofficeDayDetailDto>(
+            response,
+            cancellationToken);
+    }
+
     public async Task<AttendancePunchDto> PunchAsync(
         AttendancePunchRequest request,
         CancellationToken cancellationToken)

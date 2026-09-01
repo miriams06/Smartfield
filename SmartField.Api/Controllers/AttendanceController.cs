@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SmartField.Api.Authentication;
 using SmartField.Application.Attendance;
 
 namespace SmartField.Api.Controllers;
@@ -69,6 +70,44 @@ public sealed class AttendanceController : ControllerBase
         return Ok(result.Value);
     }
 
+    [HttpGet("admin/day")]
+    [Authorize(Policy = SmartFieldPolicies.Backoffice)]
+    public async Task<ActionResult<AttendanceBackofficeDayDto>> GetBackofficeDay(
+        [FromQuery] DateOnly date,
+        [FromQuery] Guid? employeeId,
+        [FromQuery] Guid? workSiteId,
+        CancellationToken cancellationToken)
+    {
+        var result = await attendanceService.GetBackofficeDayAsync(
+            new AttendanceBackofficeDayFilter(date, employeeId, workSiteId),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapFailure(result);
+        }
+
+        return Ok(result.Value);
+    }
+
+    [HttpGet("admin/day/{date}/employees/{employeeId}")]
+    [Authorize(Policy = SmartFieldPolicies.Backoffice)]
+    public async Task<ActionResult<AttendanceBackofficeDayDetailDto>> GetBackofficeDayDetail(
+        DateOnly date,
+        Guid employeeId,
+        CancellationToken cancellationToken)
+    {
+        var result = await attendanceService.GetBackofficeDayDetailAsync(
+            employeeId,
+            date,
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapFailure(result);
+        }
+
+        return Ok(result.Value);
+    }
+
     [HttpPost("punch")]
     public async Task<ActionResult<AttendancePunchDto>> Punch(
         AttendancePunchRequest request,
@@ -108,6 +147,11 @@ public sealed class AttendanceController : ControllerBase
             {
                 Status = StatusCodes.Status404NotFound,
                 Title = "Projeto não encontrado."
+            }),
+            AttendanceError.EmployeeNotFound => NotFound(new ProblemDetails
+            {
+                Status = StatusCodes.Status404NotFound,
+                Title = "Funcionário não encontrado."
             }),
             AttendanceError.InvalidSequence => Conflict(new ProblemDetails
             {

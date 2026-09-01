@@ -63,6 +63,42 @@ public sealed record AttendanceDayDetailDto(
     bool HasOutsideGeofence,
     IReadOnlyList<AttendanceHistoryEventDto> Events);
 
+public sealed record AttendanceBackofficeDayDto(
+    string Date,
+    IReadOnlyList<AttendanceBackofficeEmployeeDayDto> Employees);
+
+public sealed record AttendanceBackofficeEmployeeDayDto(
+    Guid EmployeeId,
+    string EmployeeNumber,
+    string EmployeeName,
+    Guid? DefaultWorkSiteId,
+    string? DefaultWorkSiteName,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    int BreakCount,
+    int BreakMinutes,
+    int WorkedMinutes,
+    string CurrentStatus,
+    string CurrentStatusLabel,
+    bool HasOutsideGeofence);
+
+public sealed record AttendanceBackofficeDayDetailDto(
+    string Date,
+    Guid EmployeeId,
+    string EmployeeNumber,
+    string EmployeeName,
+    Guid? DefaultWorkSiteId,
+    string? DefaultWorkSiteName,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    IReadOnlyList<AttendanceBreakDto> Breaks,
+    int WorkedMinutes,
+    int BreakMinutes,
+    string CurrentStatus,
+    string CurrentStatusLabel,
+    bool HasOutsideGeofence,
+    IReadOnlyList<AttendanceHistoryEventDto> Events);
+
 public sealed record AttendanceBreakDto(
     DateTimeOffset StartedAtUtc,
     DateTimeOffset? EndedAtUtc,

@@ -156,8 +156,42 @@ public class AttendanceTodayServiceTests
         public Task<AttendanceEmployeeStateReference?> GetEmployeeStateReferenceAsync(Guid companyId, Guid employeeId, CancellationToken cancellationToken)
             => Task.FromResult<AttendanceEmployeeStateReference?>(new AttendanceEmployeeStateReference(EmployeeId, "Funcionario Demo", "UTC"));
 
+        public Task<string?> GetCompanyTimeZoneAsync(Guid companyId, CancellationToken cancellationToken)
+            => Task.FromResult<string?>(companyId == CompanyId ? "UTC" : null);
+
+        public Task<IReadOnlyList<AttendanceBackofficeEmployeeReference>> GetBackofficeEmployeesAsync(
+            Guid companyId,
+            Guid? employeeId,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<AttendanceBackofficeEmployeeReference> employees =
+                companyId == CompanyId && (!employeeId.HasValue || employeeId.Value == EmployeeId)
+                    ? [new AttendanceBackofficeEmployeeReference(EmployeeId, "FUNC001", "Funcionario Demo", null, null)]
+                    : [];
+
+            return Task.FromResult(employees);
+        }
+
         public Task<IReadOnlyList<AttendanceEvent>> GetEventsFromAsync(Guid companyId, Guid employeeId, DateTimeOffset fromUtc, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<AttendanceEvent>>(Events.Where(item => item.ServerTimestampUtc >= fromUtc).ToArray());
+
+        public Task<IReadOnlyList<AttendanceEvent>> GetEventsBetweenAsync(
+            Guid companyId,
+            DateTimeOffset fromUtc,
+            DateTimeOffset toUtc,
+            Guid? employeeId,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<AttendanceEvent> events = Events
+                .Where(item =>
+                    item.CompanyId == companyId
+                    && item.ServerTimestampUtc >= fromUtc
+                    && item.ServerTimestampUtc < toUtc
+                    && (!employeeId.HasValue || item.EmployeeId == employeeId.Value))
+                .ToArray();
+
+            return Task.FromResult(events);
+        }
 
         public void Add(AttendanceEvent attendanceEvent) => throw new NotSupportedException();
         public void Add(AuditLog auditLog) => throw new NotSupportedException();

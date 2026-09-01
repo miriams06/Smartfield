@@ -99,6 +99,61 @@ public sealed class AttendanceStore : IAttendanceStore
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    public Task<string?> GetCompanyTimeZoneAsync(
+        Guid companyId,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.Companies
+            .AsNoTracking()
+            .Where(company =>
+                company.Id == companyId
+                && company.IsActive)
+            .Select(company => company.TimeZone)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AttendanceBackofficeEmployeeReference>> GetBackofficeEmployeesAsync(
+        Guid companyId,
+        Guid? employeeId,
+        CancellationToken cancellationToken)
+    {
+        return await BuildBackofficeEmployeesQuery(companyId, employeeId)
+            .ToListAsync(cancellationToken);
+    }
+
+    internal IQueryable<AttendanceBackofficeEmployeeReference> BuildBackofficeEmployeesQuery(
+        Guid companyId,
+        Guid? employeeId)
+    {
+        var query = dbContext.Employees
+            .AsNoTracking()
+            .Where(employee =>
+                employee.CompanyId == companyId
+                && employee.IsActive);
+
+        if (employeeId.HasValue)
+        {
+            query = query.Where(employee => employee.Id == employeeId.Value);
+        }
+
+        return query
+            .OrderBy(employee => employee.Name)
+            .ThenBy(employee => employee.EmployeeNumber)
+            .Select(employee => new AttendanceBackofficeEmployeeReference(
+                employee.Id,
+                employee.EmployeeNumber,
+                employee.Name,
+                employee.DefaultWorkSiteId,
+                employee.DefaultWorkSiteId.HasValue
+                    ? dbContext.WorkSites
+                        .Where(workSite =>
+                            workSite.CompanyId == companyId
+                            && workSite.Id == employee.DefaultWorkSiteId.Value)
+                        .Select(workSite => workSite.Name)
+                        .SingleOrDefault()
+                    : null));
+    }
+
     public async Task<IReadOnlyList<AttendanceEvent>> GetEventsFromAsync(
         Guid companyId,
         Guid employeeId,
@@ -115,6 +170,43 @@ public sealed class AttendanceStore : IAttendanceStore
             .ThenBy(attendanceEvent => attendanceEvent.CreatedAtUtc)
             .ThenBy(attendanceEvent => attendanceEvent.Id)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AttendanceEvent>> GetEventsBetweenAsync(
+        Guid companyId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        Guid? employeeId,
+        CancellationToken cancellationToken)
+    {
+        return await BuildEventsBetweenQuery(companyId, fromUtc, toUtc, employeeId)
+            .ToListAsync(cancellationToken);
+    }
+
+    internal IQueryable<AttendanceEvent> BuildEventsBetweenQuery(
+        Guid companyId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        Guid? employeeId)
+    {
+        var query = dbContext.AttendanceEvents
+            .AsNoTracking()
+            .Where(attendanceEvent =>
+                attendanceEvent.CompanyId == companyId
+                && attendanceEvent.ServerTimestampUtc >= fromUtc
+                && attendanceEvent.ServerTimestampUtc < toUtc);
+
+        if (employeeId.HasValue)
+        {
+            query = query.Where(attendanceEvent =>
+                attendanceEvent.EmployeeId == employeeId.Value);
+        }
+
+        return query
+            .OrderBy(attendanceEvent => attendanceEvent.EmployeeId)
+            .ThenBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.CreatedAtUtc)
+            .ThenBy(attendanceEvent => attendanceEvent.Id);
     }
 
     public void Add(AttendanceEvent attendanceEvent)
