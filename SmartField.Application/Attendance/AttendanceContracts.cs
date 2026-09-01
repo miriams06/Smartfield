@@ -65,6 +65,27 @@ public sealed record AttendanceTodayEventDto(
     bool? IsInsideGeofence,
     decimal? DistanceFromWorkSiteMeters);
 
+public sealed record AttendanceHistoryDayDto(
+    string Date,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    int BreakCount,
+    int BreakMinutes,
+    int WorkedMinutes,
+    bool HasOutsideGeofence);
+
+public sealed record AttendanceDayDetailDto(
+    string Date,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    IReadOnlyList<AttendanceBreakDto> Breaks,
+    int WorkedMinutes,
+    int BreakMinutes,
+    string CurrentStatus,
+    IReadOnlyList<string> NextAllowedActions,
+    bool HasOutsideGeofence,
+    IReadOnlyList<AttendanceTodayEventDto> Events);
+
 public sealed record AttendanceEmployeeStateReference(
     Guid EmployeeId,
     string EmployeeName,
