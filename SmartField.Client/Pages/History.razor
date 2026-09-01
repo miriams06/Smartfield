@@ -1,0 +1,276 @@
+@page "/app/history"
+@attribute [Authorize(Roles = AuthConstants.EmployeeRole)]
+@layout MobileLayout
+@using System.Globalization
+@using SmartField.Client.Attendance
+@inject AttendanceApiClient AttendanceApiClient
+
+<PageTitle>Histórico - SmartField Time</PageTitle>
+
+<section class="history-page">
+    <header class="history-header">
+        <p class="eyebrow">Assiduidade</p>
+        <h1>Histórico</h1>
+        <p class="muted">Consulta os teus últimos dias registados.</p>
+    </header>
+
+    @if (_isLoading)
+    {
+        <div class="history-state" role="status">A carregar histórico...</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="history-feedback history-feedback--error" role="alert">
+            @_errorMessage
+        </div>
+        <button class="history-retry" type="button" @onclick="LoadHistoryAsync">
+            Tentar novamente
+        </button>
+    }
+    else if (_days.Count == 0)
+    {
+        <div class="history-state">
+            <strong>Sem registos</strong>
+            <span>Ainda não existem dias de assiduidade para mostrar.</span>
+        </div>
+    }
+    else
+    {
+        <div class="history-list">
+            @foreach (var day in _days)
+            {
+                <article class="history-day">
+                    <button class="history-day__summary"
+                            type="button"
+                            disabled="@_isLoadingDetail"
+                            @onclick="() => ToggleDayAsync(day)">
+                        <span class="history-day__date">@FormatDate(day.Date)</span>
+                        <span class="history-day__times">
+                            <strong>@FormatTime(day.ClockIn)</strong>
+                            <span>→</span>
+                            <strong>@FormatTime(day.ClockOut)</strong>
+                        </span>
+                        <span class="history-day__worked">@FormatDuration(day.WorkedMinutes)</span>
+                        @if (day.BreakCount > 0)
+                        {
+                            <span class="history-day__breaks">
+                                @FormatBreakSummary(day.BreakCount, day.BreakMinutes)
+                            </span>
+                        }
+                        @if (day.HasOutsideGeofence)
+                        {
+                            <span class="history-warning">Fora da geofence</span>
+                        }
+                        <span class="history-day__open">
+                            @(_selectedDate == day.Date ? "Fechar detalhe" : "Ver detalhe")
+                        </span>
+                    </button>
+
+                    @if (_selectedDate == day.Date)
+                    {
+                        <div class="history-detail">
+                            @if (_isLoadingDetail)
+                            {
+                                <div class="history-state" role="status">A carregar detalhe...</div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(_detailErrorMessage))
+                            {
+                                <div class="history-feedback history-feedback--error" role="alert">
+                                    @_detailErrorMessage
+                                </div>
+                            }
+                            else if (_detail is not null)
+                            {
+                                <div class="history-detail__totals">
+                                    <div>
+                                        <span>Entrada</span>
+                                        <strong>@FormatTime(_detail.ClockIn)</strong>
+                                    </div>
+                                    <div>
+                                        <span>Saída</span>
+                                        <strong>@FormatTime(_detail.ClockOut)</strong>
+                                    </div>
+                                    <div>
+                                        <span>Trabalhado</span>
+                                        <strong>@FormatDuration(_detail.WorkedMinutes)</strong>
+                                    </div>
+                                    <div>
+                                        <span>Pausas</span>
+                                        <strong>@FormatDuration(_detail.BreakMinutes)</strong>
+                                    </div>
+                                </div>
+
+                                @if (_detail.Breaks.Count > 0)
+                                {
+                                    <div class="history-detail__section">
+                                        <h2>Pausas</h2>
+                                        <ul class="history-break-list">
+                                            @foreach (var pause in _detail.Breaks)
+                                            {
+                                                <li>
+                                                    <span>
+                                                        @FormatTime(pause.StartedAtUtc)
+                                                        →
+                                                        @FormatTime(pause.EndedAtUtc)
+                                                    </span>
+                                                    <strong>@FormatDuration(pause.Minutes)</strong>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+
+                                <div class="history-detail__section">
+                                    <h2>Picagens</h2>
+                                    <ul class="history-event-list">
+                                        @foreach (var attendanceEvent in _detail.Events)
+                                        {
+                                            <li>
+                                                <div>
+                                                    <strong>@GetEventLabel(attendanceEvent.EventType)</strong>
+                                                    <span>@FormatTime(attendanceEvent.ServerTimestampUtc)</span>
+                                                </div>
+                                                @if (attendanceEvent.IsInsideGeofence == false)
+                                                {
+                                                    <span class="history-warning">Fora da geofence</span>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly CultureInfo PortugueseCulture = new("pt-PT");
+
+    private IReadOnlyList<AttendanceHistoryDayDto> _days = [];
+    private AttendanceDayDetailDto? _detail;
+    private string? _selectedDate;
+    private string? _errorMessage;
+    private string? _detailErrorMessage;
+    private bool _isLoading;
+    private bool _isLoadingDetail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            _days = await AttendanceApiClient.GetHistoryAsync(CancellationToken.None);
+        }
+        catch (AttendanceApiException exception)
+        {
+            _errorMessage = exception.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        catch (TaskCanceledException)
+        {
+            _errorMessage = "O carregamento do histórico foi cancelado.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ToggleDayAsync(AttendanceHistoryDayDto day)
+    {
+        if (_selectedDate == day.Date)
+        {
+            _selectedDate = null;
+            _detail = null;
+            _detailErrorMessage = null;
+            return;
+        }
+
+        _selectedDate = day.Date;
+        _detail = null;
+        _detailErrorMessage = null;
+        _isLoadingDetail = true;
+
+        try
+        {
+            _detail = await AttendanceApiClient.GetDayAsync(
+                day.Date,
+                CancellationToken.None);
+        }
+        catch (AttendanceApiException exception)
+        {
+            _detailErrorMessage = exception.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _detailErrorMessage = "Não foi possível carregar o detalhe deste dia.";
+        }
+        catch (TaskCanceledException)
+        {
+            _detailErrorMessage = "O carregamento do detalhe foi cancelado.";
+        }
+        finally
+        {
+            _isLoadingDetail = false;
+        }
+    }
+
+    private static string FormatDate(string date)
+    {
+        return DateOnly.TryParseExact(
+            date,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed)
+            ? parsed.ToDateTime(TimeOnly.MinValue)
+                .ToString("dddd, d 'de' MMMM", PortugueseCulture)
+            : date;
+    }
+
+    private static string FormatTime(DateTimeOffset? value)
+    {
+        return value.HasValue
+            ? value.Value.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)
+            : "--:--";
+    }
+
+    private static string FormatDuration(int totalMinutes)
+    {
+        var hours = totalMinutes / 60;
+        var minutes = totalMinutes % 60;
+        return $"{hours}h {minutes:00}m";
+    }
+
+    private static string FormatBreakSummary(int count, int minutes)
+    {
+        var noun = count == 1 ? "pausa" : "pausas";
+        return $"{count} {noun} · {FormatDuration(minutes)}";
+    }
+
+    private static string GetEventLabel(string eventType)
+    {
+        return eventType switch
+        {
+            "ClockIn" => "Entrada",
+            "BreakStart" => "Início de pausa",
+            "BreakEnd" => "Fim de pausa",
+            "ClockOut" => "Saída",
+            _ => eventType
+        };
+    }
+}
