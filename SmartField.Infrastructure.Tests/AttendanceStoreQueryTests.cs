@@ -10,6 +10,8 @@ public class AttendanceStoreQueryTests
         Guid.Parse("9f0b4a28-864b-4d2f-9ca6-44cf64352d68");
     private static readonly Guid EmployeeId =
         Guid.Parse("70bfeaba-236d-48b0-b9ab-a3f8cb22d389");
+    private static readonly Guid AttendanceEventId =
+        Guid.Parse("c2105182-1ea8-4a0c-9cbb-670c9e2f2512");
 
     [Fact]
     public void BuildBackofficeEmployeesQuery_IsTranslatableBySqlServerProvider()
@@ -54,6 +56,29 @@ public class AttendanceStoreQueryTests
             .ToQueryString();
 
         Assert.Contains("FROM [AttendanceEvents]", sql);
+        Assert.Contains("ORDER BY", sql);
+    }
+
+    [Fact]
+    public void BuildCorrectionsForEventsQuery_IsTranslatableBySqlServerProvider()
+    {
+        var options = new DbContextOptionsBuilder<SmartFieldDbContext>()
+            .UseSqlServer(
+                "Server=(localdb)\\MSSQLLocalDB;Database=SmartField_QueryTranslation;Trusted_Connection=True;TrustServerCertificate=True")
+            .Options;
+
+        using var context = new SmartFieldDbContext(options)
+        {
+            CurrentCompanyId = CompanyId
+        };
+        var store = new AttendanceStore(context);
+
+        var sql = store.BuildCorrectionsForEventsQuery(
+                CompanyId,
+                [AttendanceEventId])
+            .ToQueryString();
+
+        Assert.Contains("FROM [AttendanceCorrections]", sql);
         Assert.Contains("ORDER BY", sql);
     }
 }

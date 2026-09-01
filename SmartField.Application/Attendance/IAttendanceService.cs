@@ -24,6 +24,11 @@ public interface IAttendanceService
         DateOnly date,
         CancellationToken cancellationToken);
 
+    Task<AttendanceResult<AttendanceCorrectionDto>> CorrectBackofficeEventAsync(
+        Guid attendanceEventId,
+        AttendanceCorrectionRequest request,
+        CancellationToken cancellationToken);
+
     Task<AttendanceResult<AttendancePunchDto>> PunchAsync(
         AttendancePunchRequest request,
         CancellationToken cancellationToken);

@@ -1,3 +1,5 @@
+using SmartField.Domain.Enums;
+
 namespace SmartField.Application.Attendance;
 
 public sealed record AttendancePunchRequest(
@@ -125,7 +127,35 @@ public sealed record AttendanceBackofficeDayDetailDto(
     string CurrentStatus,
     string CurrentStatusLabel,
     bool HasOutsideGeofence,
-    IReadOnlyList<AttendanceTodayEventDto> Events);
+    IReadOnlyList<AttendanceBackofficeEventDto> Events);
+
+public sealed record AttendanceBackofficeEventDto(
+    Guid Id,
+    string EventType,
+    DateTimeOffset ServerTimestampUtc,
+    DateTimeOffset? ClientTimestampUtc,
+    Guid? WorkSiteId,
+    Guid? ProjectId,
+    bool? IsInsideGeofence,
+    decimal? DistanceFromWorkSiteMeters,
+    AttendanceCorrectionDto? Correction);
+
+public sealed record AttendanceCorrectionRequest(
+    string? CorrectedEventType,
+    DateTimeOffset? CorrectedTimestampUtc,
+    string? Reason);
+
+public sealed record AttendanceCorrectionDto(
+    Guid Id,
+    Guid AttendanceEventId,
+    DateTimeOffset OriginalTimestampUtc,
+    DateTimeOffset CorrectedTimestampUtc,
+    string OriginalEventType,
+    string CorrectedEventType,
+    string Reason,
+    Guid CorrectedByUserId,
+    string? CorrectedByUserName,
+    DateTimeOffset CreatedAtUtc);
 
 public sealed record AttendanceEmployeeStateReference(
     Guid EmployeeId,
@@ -139,6 +169,18 @@ public sealed record AttendanceBackofficeEmployeeReference(
     Guid? DefaultWorkSiteId,
     string? DefaultWorkSiteName);
 
+public sealed record AttendanceEventCorrectionReference(
+    Guid Id,
+    Guid AttendanceEventId,
+    DateTimeOffset OriginalTimestampUtc,
+    DateTimeOffset CorrectedTimestampUtc,
+    AttendanceEventType OriginalEventType,
+    AttendanceEventType CorrectedEventType,
+    string Reason,
+    Guid CorrectedByUserId,
+    string? CorrectedByUserName,
+    DateTimeOffset CreatedAtUtc);
+
 public enum AttendanceError
 {
     None = 0,
@@ -151,7 +193,8 @@ public enum AttendanceError
     WorkSiteNotFound = 7,
     ProjectNotFound = 8,
     ClientEventConflict = 9,
-    EmployeeNotFound = 10
+    EmployeeNotFound = 10,
+    AttendanceEventNotFound = 11
 }
 
 public sealed record AttendanceResult<T>(

@@ -150,6 +150,9 @@ public class AttendanceTodayServiceTests
         public Task<AttendanceEvent?> GetByClientEventIdAsync(Guid companyId, Guid employeeId, Guid clientEventId, CancellationToken cancellationToken)
             => Task.FromResult<AttendanceEvent?>(null);
 
+        public Task<AttendanceEvent?> GetEventAsync(Guid companyId, Guid attendanceEventId, CancellationToken cancellationToken)
+            => Task.FromResult(Events.SingleOrDefault(item => item.CompanyId == companyId && item.Id == attendanceEventId));
+
         public Task<AttendanceEventType?> GetLastEventTypeAsync(Guid companyId, Guid employeeId, CancellationToken cancellationToken)
             => Task.FromResult(Events.OrderBy(item => item.ServerTimestampUtc).Select(item => (AttendanceEventType?)item.EventType).LastOrDefault());
 
@@ -193,7 +196,16 @@ public class AttendanceTodayServiceTests
             return Task.FromResult(events);
         }
 
+        public Task<IReadOnlyList<AttendanceEventCorrectionReference>> GetCorrectionsForEventsAsync(
+            Guid companyId,
+            IReadOnlyCollection<Guid> attendanceEventIds,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<AttendanceEventCorrectionReference>>([]);
+        }
+
         public void Add(AttendanceEvent attendanceEvent) => throw new NotSupportedException();
+        public void Add(AttendanceCorrection attendanceCorrection) => throw new NotSupportedException();
         public void Add(AuditLog auditLog) => throw new NotSupportedException();
         public void Add(IntegrationOutbox integrationOutbox) => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();

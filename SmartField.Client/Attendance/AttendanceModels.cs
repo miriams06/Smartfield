@@ -97,7 +97,35 @@ public sealed record AttendanceBackofficeDayDetailDto(
     string CurrentStatus,
     string CurrentStatusLabel,
     bool HasOutsideGeofence,
-    IReadOnlyList<AttendanceHistoryEventDto> Events);
+    IReadOnlyList<AttendanceBackofficeEventDto> Events);
+
+public sealed record AttendanceBackofficeEventDto(
+    Guid Id,
+    string EventType,
+    DateTimeOffset ServerTimestampUtc,
+    DateTimeOffset? ClientTimestampUtc,
+    Guid? WorkSiteId,
+    Guid? ProjectId,
+    bool? IsInsideGeofence,
+    decimal? DistanceFromWorkSiteMeters,
+    AttendanceCorrectionDto? Correction);
+
+public sealed record AttendanceCorrectionRequest(
+    string CorrectedEventType,
+    DateTimeOffset? CorrectedTimestampUtc,
+    string Reason);
+
+public sealed record AttendanceCorrectionDto(
+    Guid Id,
+    Guid AttendanceEventId,
+    DateTimeOffset OriginalTimestampUtc,
+    DateTimeOffset CorrectedTimestampUtc,
+    string OriginalEventType,
+    string CorrectedEventType,
+    string Reason,
+    Guid CorrectedByUserId,
+    string? CorrectedByUserName,
+    DateTimeOffset CreatedAtUtc);
 
 public sealed record AttendanceBreakDto(
     DateTimeOffset StartedAtUtc,

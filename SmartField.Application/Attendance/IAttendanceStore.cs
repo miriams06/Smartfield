@@ -21,6 +21,11 @@ public interface IAttendanceStore
         Guid clientEventId,
         CancellationToken cancellationToken);
 
+    Task<AttendanceEvent?> GetEventAsync(
+        Guid companyId,
+        Guid attendanceEventId,
+        CancellationToken cancellationToken);
+
     Task<AttendanceEventType?> GetLastEventTypeAsync(
         Guid companyId,
         Guid employeeId,
@@ -53,7 +58,14 @@ public interface IAttendanceStore
         Guid? employeeId,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<AttendanceEventCorrectionReference>> GetCorrectionsForEventsAsync(
+        Guid companyId,
+        IReadOnlyCollection<Guid> attendanceEventIds,
+        CancellationToken cancellationToken);
+
     void Add(AttendanceEvent attendanceEvent);
+
+    void Add(AttendanceCorrection attendanceCorrection);
 
     void Add(AuditLog auditLog);
 

@@ -85,4 +85,21 @@ public class AttendanceControllerTests
         Assert.Equal("admin/day/{date}/employees/{employeeId}", routeAttribute.Template);
         Assert.Equal(SmartFieldPolicies.Backoffice, authorizeAttribute?.Policy);
     }
+
+    [Fact]
+    public void Controller_ExposesBackofficeCorrectionRouteForBackofficePolicy()
+    {
+        var method = typeof(AttendanceController)
+            .GetMethod(nameof(AttendanceController.CorrectBackofficeEvent));
+        var routeAttribute = method?
+            .GetCustomAttributes(typeof(HttpPostAttribute), inherit: false)
+            .OfType<HttpMethodAttribute>()
+            .SingleOrDefault();
+        var authorizeAttribute = method?
+            .GetCustomAttribute<AuthorizeAttribute>();
+
+        Assert.NotNull(routeAttribute);
+        Assert.Equal("admin/events/{attendanceEventId}/corrections", routeAttribute.Template);
+        Assert.Equal(SmartFieldPolicies.Backoffice, authorizeAttribute?.Policy);
+    }
 }

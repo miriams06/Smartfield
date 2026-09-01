@@ -61,6 +61,20 @@ public sealed class AttendanceStore : IAttendanceStore
                 cancellationToken);
     }
 
+    public Task<AttendanceEvent?> GetEventAsync(
+        Guid companyId,
+        Guid attendanceEventId,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.AttendanceEvents
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                attendanceEvent =>
+                    attendanceEvent.CompanyId == companyId
+                    && attendanceEvent.Id == attendanceEventId,
+                cancellationToken);
+    }
+
     public Task<AttendanceEventType?> GetLastEventTypeAsync(
         Guid companyId,
         Guid employeeId,
@@ -183,6 +197,50 @@ public sealed class AttendanceStore : IAttendanceStore
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<AttendanceEventCorrectionReference>> GetCorrectionsForEventsAsync(
+        Guid companyId,
+        IReadOnlyCollection<Guid> attendanceEventIds,
+        CancellationToken cancellationToken)
+    {
+        if (attendanceEventIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await BuildCorrectionsForEventsQuery(companyId, attendanceEventIds)
+            .ToListAsync(cancellationToken);
+    }
+
+    internal IQueryable<AttendanceEventCorrectionReference> BuildCorrectionsForEventsQuery(
+        Guid companyId,
+        IReadOnlyCollection<Guid> attendanceEventIds)
+    {
+        return dbContext.AttendanceCorrections
+            .AsNoTracking()
+            .Where(correction =>
+                correction.CompanyId == companyId
+                && attendanceEventIds.Contains(correction.AttendanceEventId))
+            .OrderBy(correction => correction.AttendanceEventId)
+            .ThenByDescending(correction => correction.CreatedAtUtc)
+            .ThenByDescending(correction => correction.Id)
+            .Select(correction => new AttendanceEventCorrectionReference(
+                correction.Id,
+                correction.AttendanceEventId,
+                correction.OriginalTimestampUtc,
+                correction.CorrectedTimestampUtc,
+                correction.OriginalEventType,
+                correction.CorrectedEventType,
+                correction.Reason,
+                correction.CorrectedByUserId,
+                dbContext.Users
+                    .Where(user =>
+                        user.CompanyId == companyId
+                        && user.Id == correction.CorrectedByUserId)
+                    .Select(user => user.Email)
+                    .SingleOrDefault(),
+                correction.CreatedAtUtc));
+    }
+
     internal IQueryable<AttendanceEvent> BuildEventsBetweenQuery(
         Guid companyId,
         DateTimeOffset fromUtc,
@@ -212,6 +270,11 @@ public sealed class AttendanceStore : IAttendanceStore
     public void Add(AttendanceEvent attendanceEvent)
     {
         dbContext.AttendanceEvents.Add(attendanceEvent);
+    }
+
+    public void Add(AttendanceCorrection attendanceCorrection)
+    {
+        dbContext.AttendanceCorrections.Add(attendanceCorrection);
     }
 
     public void Add(AuditLog auditLog)

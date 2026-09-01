@@ -15,6 +15,7 @@ public class AttendanceBackofficeServiceTests
     private static readonly Guid SecondEmployeeId = Guid.Parse("dd6ff776-6f7a-4dbf-b83f-50bd492911f1");
     private static readonly Guid WorkSiteId = Guid.Parse("58e0bdd2-c572-4310-9f1f-7c06914b4505");
     private static readonly Guid SecondWorkSiteId = Guid.Parse("2602d54c-6c8d-44dd-8c9a-0a720674520e");
+    private static readonly Guid AttendanceEventId = Guid.Parse("e8e9acfd-71ca-485b-bf17-2fd3a2d15dd5");
     private static readonly DateTimeOffset Now = new(2026, 9, 1, 15, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -122,6 +123,98 @@ public class AttendanceBackofficeServiceTests
         Assert.Equal(AttendanceError.EmployeeNotFound, result.Error);
     }
 
+    [Fact]
+    public async Task CorrectBackofficeEventAsync_StoresCorrectionAndAuditWithoutChangingOriginalEvent()
+    {
+        var store = CreateStore();
+        var originalEvent = CreateEvent(
+            EmployeeId,
+            AttendanceEventType.ClockIn,
+            8,
+            0,
+            workSiteId: WorkSiteId);
+        originalEvent.Id = AttendanceEventId;
+        store.Events.Add(originalEvent);
+        var service = CreateService(store);
+
+        var result = await service.CorrectBackofficeEventAsync(
+            AttendanceEventId,
+            new AttendanceCorrectionRequest(
+                "ClockIn",
+                new DateTimeOffset(2026, 9, 1, 8, 30, 0, TimeSpan.Zero),
+                "Funcionário esqueceu-se de registar à hora certa."),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AttendanceEventId, result.Value?.AttendanceEventId);
+        Assert.Equal(new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero), result.Value?.OriginalTimestampUtc);
+        Assert.Equal(new DateTimeOffset(2026, 9, 1, 8, 30, 0, TimeSpan.Zero), result.Value?.CorrectedTimestampUtc);
+        Assert.Equal("ClockIn", result.Value?.OriginalEventType);
+        Assert.Equal("ClockIn", result.Value?.CorrectedEventType);
+        Assert.Equal(UserId, result.Value?.CorrectedByUserId);
+        Assert.Single(store.Corrections);
+        var audit = Assert.Single(store.AuditLogs);
+        Assert.Equal("AttendanceCorrection", audit.EntityType);
+        Assert.Equal("Created", audit.Action);
+        Assert.Equal(new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero), originalEvent.ServerTimestampUtc);
+    }
+
+    [Fact]
+    public async Task CorrectBackofficeEventAsync_RequiresReason()
+    {
+        var service = CreateService(CreateStore());
+
+        var result = await service.CorrectBackofficeEventAsync(
+            AttendanceEventId,
+            new AttendanceCorrectionRequest(
+                "ClockIn",
+                new DateTimeOffset(2026, 9, 1, 8, 30, 0, TimeSpan.Zero),
+                " "),
+            CancellationToken.None);
+
+        Assert.Equal(AttendanceError.Validation, result.Error);
+        Assert.Contains(nameof(AttendanceCorrectionRequest.Reason), result.ValidationErrors.Keys);
+    }
+
+    [Fact]
+    public async Task GetBackofficeDayAsync_RecalculatesSummaryWithLatestCorrection()
+    {
+        var store = CreateStore();
+        var clockIn = CreateEvent(
+            EmployeeId,
+            AttendanceEventType.ClockIn,
+            8,
+            0,
+            workSiteId: WorkSiteId);
+        clockIn.Id = AttendanceEventId;
+        store.Events.AddRange(
+        [
+            clockIn,
+            CreateEvent(EmployeeId, AttendanceEventType.ClockOut, 12, 0, workSiteId: WorkSiteId)
+        ]);
+        store.Corrections.Add(new AttendanceEventCorrectionReference(
+            Guid.NewGuid(),
+            AttendanceEventId,
+            clockIn.ServerTimestampUtc,
+            new DateTimeOffset(2026, 9, 1, 9, 0, 0, TimeSpan.Zero),
+            AttendanceEventType.ClockIn,
+            AttendanceEventType.ClockIn,
+            "Ajuste validado.",
+            UserId,
+            "admin@smartfield.local",
+            Now));
+        var service = CreateService(store);
+
+        var result = await service.GetBackofficeDayAsync(
+            new AttendanceBackofficeDayFilter(new DateOnly(2026, 9, 1), EmployeeId, null),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var row = Assert.Single(result.Value!.Employees);
+        Assert.Equal(new DateTimeOffset(2026, 9, 1, 9, 0, 0, TimeSpan.Zero), row.ClockIn);
+        Assert.Equal(180, row.WorkedMinutes);
+    }
+
     private static AttendanceService CreateService(FakeAttendanceStore store)
     {
         return new AttendanceService(
@@ -208,6 +301,9 @@ public class AttendanceBackofficeServiceTests
     {
         public List<AttendanceBackofficeEmployeeReference> Employees { get; } = [];
         public List<AttendanceEvent> Events { get; } = [];
+        public List<AttendanceEventCorrectionReference> Corrections { get; } = [];
+        public List<AuditLog> AuditLogs { get; } = [];
+        public int SaveChangesCalls { get; private set; }
 
         public Task<bool> EmployeeCanPunchAsync(
             Guid companyId,
@@ -232,6 +328,17 @@ public class AttendanceBackofficeServiceTests
             CancellationToken cancellationToken)
         {
             return Task.FromResult<AttendanceEvent?>(null);
+        }
+
+        public Task<AttendanceEvent?> GetEventAsync(
+            Guid companyId,
+            Guid attendanceEventId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(
+                Events.SingleOrDefault(attendanceEvent =>
+                    attendanceEvent.CompanyId == companyId
+                    && attendanceEvent.Id == attendanceEventId));
         }
 
         public Task<AttendanceEventType?> GetLastEventTypeAsync(
@@ -308,9 +415,40 @@ public class AttendanceBackofficeServiceTests
             return Task.FromResult(events);
         }
 
+        public Task<IReadOnlyList<AttendanceEventCorrectionReference>> GetCorrectionsForEventsAsync(
+            Guid companyId,
+            IReadOnlyCollection<Guid> attendanceEventIds,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<AttendanceEventCorrectionReference> corrections = Corrections
+                .Where(correction => attendanceEventIds.Contains(correction.AttendanceEventId))
+                .ToArray();
+
+            return Task.FromResult(corrections);
+        }
+
         public void Add(AttendanceEvent attendanceEvent) => throw new NotSupportedException();
-        public void Add(AuditLog auditLog) => throw new NotSupportedException();
+        public void Add(AttendanceCorrection attendanceCorrection)
+        {
+            Corrections.Add(new AttendanceEventCorrectionReference(
+                attendanceCorrection.Id,
+                attendanceCorrection.AttendanceEventId,
+                attendanceCorrection.OriginalTimestampUtc,
+                attendanceCorrection.CorrectedTimestampUtc,
+                attendanceCorrection.OriginalEventType,
+                attendanceCorrection.CorrectedEventType,
+                attendanceCorrection.Reason,
+                attendanceCorrection.CorrectedByUserId,
+                null,
+                attendanceCorrection.CreatedAtUtc));
+        }
+
+        public void Add(AuditLog auditLog) => AuditLogs.Add(auditLog);
         public void Add(IntegrationOutbox integrationOutbox) => throw new NotSupportedException();
-        public Task SaveChangesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task SaveChangesAsync(CancellationToken cancellationToken)
+        {
+            SaveChangesCalls++;
+            return Task.CompletedTask;
+        }
     }
 }

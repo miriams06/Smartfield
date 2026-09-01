@@ -108,6 +108,25 @@ public sealed class AttendanceController : ControllerBase
         return Ok(result.Value);
     }
 
+    [HttpPost("admin/events/{attendanceEventId}/corrections")]
+    [Authorize(Policy = SmartFieldPolicies.Backoffice)]
+    public async Task<ActionResult<AttendanceCorrectionDto>> CorrectBackofficeEvent(
+        Guid attendanceEventId,
+        AttendanceCorrectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await attendanceService.CorrectBackofficeEventAsync(
+            attendanceEventId,
+            request,
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapFailure(result);
+        }
+
+        return Ok(result.Value);
+    }
+
     [HttpPost("punch")]
     public async Task<ActionResult<AttendancePunchDto>> Punch(
         AttendancePunchRequest request,
@@ -152,6 +171,11 @@ public sealed class AttendanceController : ControllerBase
             {
                 Status = StatusCodes.Status404NotFound,
                 Title = "Funcionário não encontrado."
+            }),
+            AttendanceError.AttendanceEventNotFound => NotFound(new ProblemDetails
+            {
+                Status = StatusCodes.Status404NotFound,
+                Title = "Picagem não encontrada."
             }),
             AttendanceError.InvalidSequence => Conflict(new ProblemDetails
             {

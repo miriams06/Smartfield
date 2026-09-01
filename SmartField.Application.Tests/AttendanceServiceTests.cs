@@ -480,6 +480,8 @@ public class AttendanceServiceTests
 
         public List<AttendanceBackofficeEmployeeReference> BackofficeEmployees { get; } = [];
 
+        public List<AttendanceEventCorrectionReference> Corrections { get; } = [];
+
         public bool ThrowClientEventConflictOnSave { get; set; }
 
         public int SaveChangesCalls { get; private set; }
@@ -523,6 +525,19 @@ public class AttendanceServiceTests
                 ? ExistingAfterSaveConflict
                 : Existing;
             return Task.FromResult(value);
+        }
+
+        public Task<AttendanceEvent?> GetEventAsync(
+            Guid companyId,
+            Guid attendanceEventId,
+            CancellationToken cancellationToken)
+        {
+            var attendanceEvent = StateEvents
+                .SingleOrDefault(item =>
+                    item.CompanyId == companyId
+                    && item.Id == attendanceEventId);
+
+            return Task.FromResult(attendanceEvent);
         }
 
         public Task<AttendanceEventType?> GetLastEventTypeAsync(
@@ -614,9 +629,36 @@ public class AttendanceServiceTests
             return Task.FromResult<IReadOnlyList<AttendanceEvent>>(events);
         }
 
+        public Task<IReadOnlyList<AttendanceEventCorrectionReference>> GetCorrectionsForEventsAsync(
+            Guid companyId,
+            IReadOnlyCollection<Guid> attendanceEventIds,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<AttendanceEventCorrectionReference> corrections = Corrections
+                .Where(correction => attendanceEventIds.Contains(correction.AttendanceEventId))
+                .ToArray();
+
+            return Task.FromResult(corrections);
+        }
+
         public void Add(AttendanceEvent attendanceEvent)
         {
             AttendanceEvents.Add(attendanceEvent);
+        }
+
+        public void Add(AttendanceCorrection attendanceCorrection)
+        {
+            Corrections.Add(new AttendanceEventCorrectionReference(
+                attendanceCorrection.Id,
+                attendanceCorrection.AttendanceEventId,
+                attendanceCorrection.OriginalTimestampUtc,
+                attendanceCorrection.CorrectedTimestampUtc,
+                attendanceCorrection.OriginalEventType,
+                attendanceCorrection.CorrectedEventType,
+                attendanceCorrection.Reason,
+                attendanceCorrection.CorrectedByUserId,
+                null,
+                attendanceCorrection.CreatedAtUtc));
         }
 
         public void Add(AuditLog auditLog)

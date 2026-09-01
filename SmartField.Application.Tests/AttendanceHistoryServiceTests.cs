@@ -224,6 +224,17 @@ public class AttendanceHistoryServiceTests
             Guid clientEventId,
             CancellationToken cancellationToken) => Task.FromResult<AttendanceEvent?>(null);
 
+        public Task<AttendanceEvent?> GetEventAsync(
+            Guid companyId,
+            Guid attendanceEventId,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(
+                Events.SingleOrDefault(attendanceEvent =>
+                    attendanceEvent.CompanyId == companyId
+                    && attendanceEvent.Id == attendanceEventId));
+        }
+
         public Task<AttendanceEventType?> GetLastEventTypeAsync(
             Guid companyId,
             Guid employeeId,
@@ -306,7 +317,16 @@ public class AttendanceHistoryServiceTests
             return Task.FromResult(result);
         }
 
+        public Task<IReadOnlyList<AttendanceEventCorrectionReference>> GetCorrectionsForEventsAsync(
+            Guid companyId,
+            IReadOnlyCollection<Guid> attendanceEventIds,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<AttendanceEventCorrectionReference>>([]);
+        }
+
         public void Add(AttendanceEvent attendanceEvent) => Events.Add(attendanceEvent);
+        public void Add(AttendanceCorrection attendanceCorrection) { }
         public void Add(AuditLog auditLog) { }
         public void Add(IntegrationOutbox integrationOutbox) { }
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;

@@ -276,11 +276,18 @@ public sealed class AttendanceService : IAttendanceService
             companyTimeZone,
             filter.EmployeeId,
             cancellationToken);
+        var latestCorrections = await GetLatestCorrectionsByEventIdAsync(
+            companyId.Value,
+            dayEvents,
+            cancellationToken);
         var eventsByEmployee = dayEvents
             .GroupBy(attendanceEvent => attendanceEvent.EmployeeId)
             .ToDictionary(
                 group => group.Key,
-                group => OrderEvents(group).ToArray());
+                group => OrderEvents(
+                    group.Select(attendanceEvent =>
+                        ApplyCorrection(attendanceEvent, latestCorrections)))
+                    .ToArray());
         var calculatedAtUtc = timeProvider.GetUtcNow();
         var companyToday = DateOnly.FromDateTime(
             TimeZoneInfo.ConvertTime(calculatedAtUtc, companyTimeZone).Date);
@@ -357,7 +364,15 @@ public sealed class AttendanceService : IAttendanceService
             companyTimeZone,
             employeeId,
             cancellationToken);
-        var orderedEvents = OrderEvents(dayEvents).ToArray();
+        var latestCorrections = await GetLatestCorrectionsByEventIdAsync(
+            companyId.Value,
+            dayEvents,
+            cancellationToken);
+        var orderedEvents = OrderEvents(
+                dayEvents.Select(attendanceEvent =>
+                    ApplyCorrection(attendanceEvent, latestCorrections)))
+            .ToArray();
+        var originalEvents = OrderEvents(dayEvents).ToArray();
         var calculatedAtUtc = timeProvider.GetUtcNow();
         var companyToday = DateOnly.FromDateTime(
             TimeZoneInfo.ConvertTime(calculatedAtUtc, companyTimeZone).Date);
@@ -384,8 +399,94 @@ public sealed class AttendanceService : IAttendanceService
                 metrics.BreakDurationMinutes,
                 AttendanceSequenceRules.GetCurrentState(lastEventType),
                 AttendanceSequenceRules.GetCurrentStateLabel(lastEventType),
-                HasOutsideGeofence(orderedEvents),
-                orderedEvents.Select(MapTodayEvent).ToArray()));
+                HasOutsideGeofence(originalEvents),
+                originalEvents
+                    .Select(attendanceEvent =>
+                        MapBackofficeEvent(attendanceEvent, latestCorrections))
+                    .ToArray()));
+    }
+
+    public async Task<AttendanceResult<AttendanceCorrectionDto>> CorrectBackofficeEventAsync(
+        Guid attendanceEventId,
+        AttendanceCorrectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var validation = ValidateCorrectionRequest(request);
+        if (validation.Errors.Count > 0)
+        {
+            return AttendanceResult<AttendanceCorrectionDto>.Invalid(validation.Errors);
+        }
+
+        var companyId = currentCompanyProvider.CompanyId;
+        if (!companyId.HasValue)
+        {
+            return AttendanceResult<AttendanceCorrectionDto>.Failure(
+                AttendanceError.CompanyUnavailable);
+        }
+
+        var userId = currentUserProvider.UserId;
+        if (!userId.HasValue)
+        {
+            return AttendanceResult<AttendanceCorrectionDto>.Failure(
+                AttendanceError.UserUnavailable);
+        }
+
+        var originalEvent = await attendanceStore.GetEventAsync(
+            companyId.Value,
+            attendanceEventId,
+            cancellationToken);
+        if (originalEvent is null)
+        {
+            return AttendanceResult<AttendanceCorrectionDto>.Failure(
+                AttendanceError.AttendanceEventNotFound);
+        }
+
+        var nowUtc = timeProvider.GetUtcNow();
+        var correction = new AttendanceCorrection
+        {
+            Id = Guid.NewGuid(),
+            CompanyId = companyId.Value,
+            AttendanceEventId = originalEvent.Id,
+            OriginalTimestampUtc = originalEvent.ServerTimestampUtc,
+            CorrectedTimestampUtc = validation.CorrectedTimestampUtc,
+            OriginalEventType = originalEvent.EventType,
+            CorrectedEventType = validation.CorrectedEventType,
+            Reason = validation.Reason,
+            CorrectedByUserId = userId.Value,
+            CreatedAtUtc = nowUtc
+        };
+        var payload = SerializeCorrection(correction);
+
+        attendanceStore.Add(correction);
+        attendanceStore.Add(new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            CompanyId = companyId.Value,
+            UserId = userId.Value,
+            EntityType = nameof(AttendanceCorrection),
+            EntityId = correction.Id,
+            Action = "Created",
+            OldValues = SerializeEvent(originalEvent),
+            NewValues = payload,
+            TimestampUtc = nowUtc,
+            CreatedAtUtc = nowUtc
+        });
+
+        await attendanceStore.SaveChangesAsync(cancellationToken);
+
+        return AttendanceResult<AttendanceCorrectionDto>.Success(
+            MapCorrection(
+                new AttendanceEventCorrectionReference(
+                    correction.Id,
+                    correction.AttendanceEventId,
+                    correction.OriginalTimestampUtc,
+                    correction.CorrectedTimestampUtc,
+                    correction.OriginalEventType,
+                    correction.CorrectedEventType,
+                    correction.Reason,
+                    correction.CorrectedByUserId,
+                    null,
+                    correction.CreatedAtUtc)));
     }
 
     public async Task<AttendanceResult<AttendancePunchDto>> PunchAsync(
@@ -630,6 +731,48 @@ public sealed class AttendanceService : IAttendanceService
         return new AttendanceRequestValidation(eventType, errors);
     }
 
+    private static AttendanceCorrectionValidation ValidateCorrectionRequest(
+        AttendanceCorrectionRequest request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        var eventType = AttendanceEventType.ClockIn;
+
+        if (string.IsNullOrWhiteSpace(request.CorrectedEventType)
+            || !Enum.TryParse(
+                request.CorrectedEventType,
+                ignoreCase: true,
+                out eventType)
+            || !Enum.IsDefined(eventType))
+        {
+            errors[nameof(request.CorrectedEventType)] =
+                ["O tipo corrigido não é válido."];
+        }
+
+        if (!request.CorrectedTimestampUtc.HasValue)
+        {
+            errors[nameof(request.CorrectedTimestampUtc)] =
+                ["A nova hora é obrigatória."];
+        }
+
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            errors[nameof(request.Reason)] =
+                ["O motivo da correção é obrigatório."];
+        }
+        else if (reason.Length > 1000)
+        {
+            errors[nameof(request.Reason)] =
+                ["O motivo não pode exceder 1000 caracteres."];
+        }
+
+        return new AttendanceCorrectionValidation(
+            eventType,
+            request.CorrectedTimestampUtc?.ToUniversalTime() ?? DateTimeOffset.MinValue,
+            reason ?? string.Empty,
+            errors);
+    }
+
     private static string SerializeEvent(AttendanceEvent attendanceEvent)
     {
         return JsonSerializer.Serialize(new
@@ -649,6 +792,23 @@ public sealed class AttendanceService : IAttendanceService
             attendanceEvent.DistanceFromWorkSiteMeters,
             Source = attendanceEvent.Source.ToString(),
             attendanceEvent.ClientEventId
+        });
+    }
+
+    private static string SerializeCorrection(AttendanceCorrection correction)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            correction.Id,
+            correction.CompanyId,
+            correction.AttendanceEventId,
+            correction.OriginalTimestampUtc,
+            correction.CorrectedTimestampUtc,
+            OriginalEventType = correction.OriginalEventType.ToString(),
+            CorrectedEventType = correction.CorrectedEventType.ToString(),
+            correction.Reason,
+            correction.CorrectedByUserId,
+            correction.CreatedAtUtc
         });
     }
 
@@ -684,6 +844,40 @@ public sealed class AttendanceService : IAttendanceService
             attendanceEvent.ProjectId,
             attendanceEvent.IsInsideGeofence,
             attendanceEvent.DistanceFromWorkSiteMeters);
+    }
+
+    private static AttendanceBackofficeEventDto MapBackofficeEvent(
+        AttendanceEvent attendanceEvent,
+        IReadOnlyDictionary<Guid, AttendanceEventCorrectionReference> correctionsByEventId)
+    {
+        correctionsByEventId.TryGetValue(attendanceEvent.Id, out var correction);
+
+        return new AttendanceBackofficeEventDto(
+            attendanceEvent.Id,
+            attendanceEvent.EventType.ToString(),
+            attendanceEvent.ServerTimestampUtc,
+            attendanceEvent.ClientTimestampUtc,
+            attendanceEvent.WorkSiteId,
+            attendanceEvent.ProjectId,
+            attendanceEvent.IsInsideGeofence,
+            attendanceEvent.DistanceFromWorkSiteMeters,
+            correction is null ? null : MapCorrection(correction));
+    }
+
+    private static AttendanceCorrectionDto MapCorrection(
+        AttendanceEventCorrectionReference correction)
+    {
+        return new AttendanceCorrectionDto(
+            correction.Id,
+            correction.AttendanceEventId,
+            correction.OriginalTimestampUtc,
+            correction.CorrectedTimestampUtc,
+            correction.OriginalEventType.ToString(),
+            correction.CorrectedEventType.ToString(),
+            correction.Reason,
+            correction.CorrectedByUserId,
+            correction.CorrectedByUserName,
+            correction.CreatedAtUtc);
     }
 
     private static AttendanceStateDto BuildState(
@@ -847,6 +1041,66 @@ public sealed class AttendanceService : IAttendanceService
         }
 
         return errors;
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, AttendanceEventCorrectionReference>> GetLatestCorrectionsByEventIdAsync(
+        Guid companyId,
+        IReadOnlyList<AttendanceEvent> events,
+        CancellationToken cancellationToken)
+    {
+        var eventIds = events
+            .Select(attendanceEvent => attendanceEvent.Id)
+            .Distinct()
+            .ToArray();
+        if (eventIds.Length == 0)
+        {
+            return new Dictionary<Guid, AttendanceEventCorrectionReference>();
+        }
+
+        var corrections = await attendanceStore.GetCorrectionsForEventsAsync(
+            companyId,
+            eventIds,
+            cancellationToken);
+
+        return corrections
+            .GroupBy(correction => correction.AttendanceEventId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(correction => correction.CreatedAtUtc)
+                    .ThenByDescending(correction => correction.Id)
+                    .First());
+    }
+
+    private static AttendanceEvent ApplyCorrection(
+        AttendanceEvent attendanceEvent,
+        IReadOnlyDictionary<Guid, AttendanceEventCorrectionReference> correctionsByEventId)
+    {
+        if (!correctionsByEventId.TryGetValue(attendanceEvent.Id, out var correction))
+        {
+            return attendanceEvent;
+        }
+
+        return new AttendanceEvent
+        {
+            Id = attendanceEvent.Id,
+            CompanyId = attendanceEvent.CompanyId,
+            EmployeeId = attendanceEvent.EmployeeId,
+            EventType = correction.CorrectedEventType,
+            ServerTimestampUtc = correction.CorrectedTimestampUtc,
+            ClientTimestampUtc = attendanceEvent.ClientTimestampUtc,
+            Latitude = attendanceEvent.Latitude,
+            Longitude = attendanceEvent.Longitude,
+            LocationAccuracyMeters = attendanceEvent.LocationAccuracyMeters,
+            WorkSiteId = attendanceEvent.WorkSiteId,
+            ProjectId = attendanceEvent.ProjectId,
+            IsInsideGeofence = attendanceEvent.IsInsideGeofence,
+            DistanceFromWorkSiteMeters = attendanceEvent.DistanceFromWorkSiteMeters,
+            Source = attendanceEvent.Source,
+            ClientEventId = attendanceEvent.ClientEventId,
+            Notes = attendanceEvent.Notes,
+            CreatedAtUtc = attendanceEvent.CreatedAtUtc
+        };
     }
 
     private static DailyAttendanceMetrics CalculateDailyMetrics(
@@ -1063,6 +1317,12 @@ public sealed class AttendanceService : IAttendanceService
 
     private sealed record AttendanceRequestValidation(
         AttendanceEventType EventType,
+        IReadOnlyDictionary<string, string[]> Errors);
+
+    private sealed record AttendanceCorrectionValidation(
+        AttendanceEventType CorrectedEventType,
+        DateTimeOffset CorrectedTimestampUtc,
+        string Reason,
         IReadOnlyDictionary<string, string[]> Errors);
 }
 

@@ -94,6 +94,21 @@ public sealed class AttendanceApiClient
             cancellationToken);
     }
 
+    public async Task<AttendanceCorrectionDto> CorrectBackofficeEventAsync(
+        Guid attendanceEventId,
+        AttendanceCorrectionRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            $"api/attendance/admin/events/{attendanceEventId}/corrections",
+            request,
+            cancellationToken);
+
+        return await ReadRequiredAsync<AttendanceCorrectionDto>(
+            response,
+            cancellationToken);
+    }
+
     public async Task<AttendancePunchDto> PunchAsync(
         AttendancePunchRequest request,
         CancellationToken cancellationToken)

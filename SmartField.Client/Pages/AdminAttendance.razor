@@ -1,6 +1,7 @@
 @page "/admin/attendance"
 @attribute [Authorize(Roles = AuthConstants.BackofficeRoles)]
 @layout BackofficeLayout
+@using System.ComponentModel.DataAnnotations
 @using System.Globalization
 @using SmartField.Client.Attendance
 @using SmartField.Client.Employees
@@ -24,6 +25,13 @@
     {
         <div class="admin-attendance-message admin-attendance-message--error" role="alert">
             @_errorMessage
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_correctionSuccessMessage))
+    {
+        <div class="admin-attendance-message admin-attendance-message--success" role="status">
+            @_correctionSuccessMessage
         </div>
     }
 
@@ -226,17 +234,102 @@
                         <ul class="admin-attendance-events">
                             @foreach (var attendanceEvent in _detail.Events)
                             {
-                                <li>
-                                    <div>
-                                        <strong>@GetEventLabel(attendanceEvent.EventType)</strong>
-                                        <span>
-                                            @FormatTime(attendanceEvent.ServerTimestampUtc)
-                                            · @FormatWorkSite(attendanceEvent.WorkSiteId)
-                                        </span>
+                                <li class="admin-attendance-event">
+                                    <div class="admin-attendance-event__summary">
+                                        <div>
+                                            <strong>@GetEventLabel(attendanceEvent.EventType)</strong>
+                                            <span>
+                                                @FormatTime(attendanceEvent.ServerTimestampUtc)
+                                                · @FormatWorkSite(attendanceEvent.WorkSiteId)
+                                            </span>
+                                            @if (attendanceEvent.Correction is not null)
+                                            {
+                                                <small>
+                                                    Corrigido para @GetEventLabel(attendanceEvent.Correction.CorrectedEventType)
+                                                    às @FormatTime(attendanceEvent.Correction.CorrectedTimestampUtc)
+                                                </small>
+                                                <small>
+                                                    Por @FormatCorrectionUser(attendanceEvent.Correction)
+                                                    em @FormatDateTime(attendanceEvent.Correction.CreatedAtUtc)
+                                                </small>
+                                            }
+                                        </div>
+                                        <div class="admin-attendance-event__actions">
+                                            @if (attendanceEvent.IsInsideGeofence == false)
+                                            {
+                                                <span class="attendance-warning">Fora da geofence</span>
+                                            }
+                                            <button class="btn btn-sm btn-outline-secondary"
+                                                    type="button"
+                                                    @onclick="() => StartCorrection(attendanceEvent)"
+                                                    disabled="@_isBusy">
+                                                Corrigir
+                                            </button>
+                                        </div>
                                     </div>
-                                    @if (attendanceEvent.IsInsideGeofence == false)
+
+                                    @if (_correctionEditor.AttendanceEventId == attendanceEvent.Id)
                                     {
-                                        <span class="attendance-warning">Fora da geofence</span>
+                                        <EditForm Model="@_correctionEditor" OnValidSubmit="SaveCorrectionAsync">
+                                            <DataAnnotationsValidator />
+                                            <ValidationSummary />
+
+                                            <div class="admin-attendance-correction">
+                                                <div class="admin-attendance-correction__original">
+                                                    <span>Valor original</span>
+                                                    <strong>
+                                                        @GetEventLabel(_correctionEditor.OriginalEventType)
+                                                        às @_correctionEditor.OriginalTimestampLocal
+                                                    </strong>
+                                                </div>
+
+                                                <label>
+                                                    Novo tipo
+                                                    <InputSelect class="form-control" @bind-Value="_correctionEditor.CorrectedEventType">
+                                                        <option value="ClockIn">Entrada</option>
+                                                        <option value="BreakStart">Início de pausa</option>
+                                                        <option value="BreakEnd">Fim de pausa</option>
+                                                        <option value="ClockOut">Saída</option>
+                                                    </InputSelect>
+                                                </label>
+
+                                                <label>
+                                                    Nova hora
+                                                    <InputText class="form-control"
+                                                               type="datetime-local"
+                                                               @bind-Value="_correctionEditor.CorrectedTimestampLocal" />
+                                                </label>
+
+                                                <label class="admin-attendance-correction__reason">
+                                                    Motivo
+                                                    <InputTextArea class="form-control"
+                                                                   @bind-Value="_correctionEditor.Reason"
+                                                                   placeholder="Explica a razão da correção" />
+                                                </label>
+
+                                                <div class="admin-attendance-correction__actions">
+                                                    <button class="btn btn-outline-secondary"
+                                                            type="button"
+                                                            @onclick="CancelCorrection"
+                                                            disabled="@_isSavingCorrection">
+                                                        Cancelar
+                                                    </button>
+                                                    <button class="btn btn-primary"
+                                                            type="submit"
+                                                            disabled="@_isSavingCorrection">
+                                                        @(_isSavingCorrection ? "A guardar..." : "Guardar correção")
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </EditForm>
+                                    }
+
+                                    @if (attendanceEvent.Correction is not null)
+                                    {
+                                        <div class="admin-attendance-correction-note">
+                                            <strong>Motivo:</strong>
+                                            <span>@attendanceEvent.Correction.Reason</span>
+                                        </div>
                                     }
                                 </li>
                             }
@@ -255,6 +348,7 @@
     private IReadOnlyList<WorkSiteDto> _workSites = [];
     private AttendanceBackofficeDayDto? _day;
     private AttendanceBackofficeDayDetailDto? _detail;
+    private CorrectionEditorModel _correctionEditor = new();
     private string _selectedDate = DateOnly.FromDateTime(DateTime.Today)
         .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private string? _selectedEmployeeId;
@@ -262,9 +356,11 @@
     private Guid? _selectedEmployeeDetailId;
     private string? _errorMessage;
     private string? _detailErrorMessage;
+    private string? _correctionSuccessMessage;
     private bool _isLoading;
     private bool _isLoadingDetail;
-    private bool _isBusy => _isLoading || _isLoadingDetail;
+    private bool _isSavingCorrection;
+    private bool _isBusy => _isLoading || _isLoadingDetail || _isSavingCorrection;
 
     protected override async Task OnInitializedAsync()
     {
@@ -320,8 +416,10 @@
         _isLoading = true;
         _errorMessage = null;
         _detailErrorMessage = null;
+        _correctionSuccessMessage = null;
         _selectedEmployeeDetailId = null;
         _detail = null;
+        _correctionEditor = new CorrectionEditorModel();
 
         try
         {
@@ -369,12 +467,15 @@
             _selectedEmployeeDetailId = null;
             _detail = null;
             _detailErrorMessage = null;
+            _correctionEditor = new CorrectionEditorModel();
             return;
         }
 
         _selectedEmployeeDetailId = row.EmployeeId;
         _detail = null;
         _detailErrorMessage = null;
+        _correctionSuccessMessage = null;
+        _correctionEditor = new CorrectionEditorModel();
         _isLoadingDetail = true;
 
         try
@@ -399,11 +500,101 @@
         }
     }
 
+    private void StartCorrection(AttendanceBackofficeEventDto attendanceEvent)
+    {
+        _detailErrorMessage = null;
+        _correctionSuccessMessage = null;
+        _correctionEditor = new CorrectionEditorModel();
+        _correctionEditor.Load(attendanceEvent);
+    }
+
+    private void CancelCorrection()
+    {
+        _correctionEditor = new CorrectionEditorModel();
+    }
+
+    private async Task SaveCorrectionAsync()
+    {
+        _isSavingCorrection = true;
+        _detailErrorMessage = null;
+        _correctionSuccessMessage = null;
+
+        try
+        {
+            var correctedTimestampUtc = ParseLocalDateTime(_correctionEditor.CorrectedTimestampLocal);
+            if (!correctedTimestampUtc.HasValue)
+            {
+                _detailErrorMessage = "Indica uma nova data e hora válidas.";
+                return;
+            }
+
+            await AttendanceApiClient.CorrectBackofficeEventAsync(
+                _correctionEditor.AttendanceEventId!.Value,
+                new AttendanceCorrectionRequest(
+                    _correctionEditor.CorrectedEventType,
+                    correctedTimestampUtc,
+                    _correctionEditor.Reason),
+                CancellationToken.None);
+
+            _correctionSuccessMessage = "Correção guardada com sucesso.";
+            _correctionEditor = new CorrectionEditorModel();
+            await ReloadSelectedDayAndDetailAsync();
+        }
+        catch (AttendanceApiException exception)
+        {
+            _detailErrorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            _detailErrorMessage = "Não foi possível guardar a correção.";
+        }
+        finally
+        {
+            _isSavingCorrection = false;
+        }
+    }
+
+    private async Task ReloadSelectedDayAndDetailAsync()
+    {
+        _day = await AttendanceApiClient.GetBackofficeDayAsync(
+            _selectedDate,
+            ParseOptionalGuid(_selectedEmployeeId),
+            ParseOptionalGuid(_selectedWorkSiteId),
+            CancellationToken.None);
+
+        if (_selectedEmployeeDetailId.HasValue)
+        {
+            _detail = await AttendanceApiClient.GetBackofficeDayDetailAsync(
+                _selectedDate,
+                _selectedEmployeeDetailId.Value,
+                CancellationToken.None);
+        }
+    }
+
     private static Guid? ParseOptionalGuid(string? value)
     {
         return Guid.TryParse(value, out var parsed)
             ? parsed
             : null;
+    }
+
+    private static DateTimeOffset? ParseLocalDateTime(string? value)
+    {
+        if (!DateTime.TryParseExact(
+            value,
+            "yyyy-MM-ddTHH:mm",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed))
+        {
+            return null;
+        }
+
+        return new DateTimeOffset(
+            parsed,
+            TimeZoneInfo.Local.GetUtcOffset(parsed))
+            .ToUniversalTime();
     }
 
     private static string FormatDate(string date)
@@ -417,6 +608,12 @@
             ? parsed.ToDateTime(TimeOnly.MinValue)
                 .ToString("dddd, d 'de' MMMM 'de' yyyy", PortugueseCulture)
             : date;
+    }
+
+    private static string FormatDateTime(DateTimeOffset value)
+    {
+        return value.ToLocalTime()
+            .ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
     }
 
     private static string FormatTime(DateTimeOffset? value)
@@ -457,6 +654,13 @@
             : $"{workSite.Code} — {workSite.Name}";
     }
 
+    private static string FormatCorrectionUser(AttendanceCorrectionDto correction)
+    {
+        return string.IsNullOrWhiteSpace(correction.CorrectedByUserName)
+            ? correction.CorrectedByUserId.ToString()
+            : correction.CorrectedByUserName;
+    }
+
     private static string GetStatusClass(string status)
     {
         return status switch
@@ -478,5 +682,44 @@
             "ClockOut" => "Saída",
             _ => eventType
         };
+    }
+
+    private sealed class CorrectionEditorModel
+    {
+        [Required]
+        public Guid? AttendanceEventId { get; set; }
+
+        public string OriginalEventType { get; set; } = string.Empty;
+
+        public string OriginalTimestampLocal { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "O novo tipo é obrigatório.")]
+        public string CorrectedEventType { get; set; } = "ClockIn";
+
+        [Required(ErrorMessage = "A nova hora é obrigatória.")]
+        public string CorrectedTimestampLocal { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "O motivo é obrigatório.")]
+        [StringLength(1000, ErrorMessage = "O motivo não pode exceder 1000 caracteres.")]
+        public string Reason { get; set; } = string.Empty;
+
+        public void Load(AttendanceBackofficeEventDto attendanceEvent)
+        {
+            AttendanceEventId = attendanceEvent.Id;
+            OriginalEventType = attendanceEvent.EventType;
+            OriginalTimestampLocal = FormatDateTimeInput(attendanceEvent.ServerTimestampUtc);
+            CorrectedEventType = attendanceEvent.Correction?.CorrectedEventType
+                ?? attendanceEvent.EventType;
+            CorrectedTimestampLocal = FormatDateTimeInput(
+                attendanceEvent.Correction?.CorrectedTimestampUtc
+                ?? attendanceEvent.ServerTimestampUtc);
+            Reason = string.Empty;
+        }
+
+        private static string FormatDateTimeInput(DateTimeOffset value)
+        {
+            return value.ToLocalTime()
+                .ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+        }
     }
 }
