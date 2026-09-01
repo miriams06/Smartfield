@@ -1,6 +1,9 @@
 @page "/"
 @attribute [Authorize]
 @layout MobileLayout
+@using SmartField.Client.Attendance
+@inject AttendanceApiClient AttendanceApiClient
+@inject BrowserGeolocationService BrowserGeolocationService
 
 <PageTitle>SmartField Time</PageTitle>
 
@@ -13,11 +16,45 @@
 
     <AuthorizeView Roles="@AuthConstants.EmployeeRole">
         <Authorized Context="employeeContext">
+            @if (!string.IsNullOrWhiteSpace(_successMessage))
+            {
+                <div class="attendance-feedback attendance-feedback--success" role="status">
+                    @_successMessage
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <div class="attendance-feedback attendance-feedback--error" role="alert">
+                    @_errorMessage
+                </div>
+            }
+
             <div class="action-grid" aria-label="Ações de assiduidade">
-                <button class="primary-action" type="button">Entrada</button>
-                <button class="secondary-action" type="button">Pausa</button>
-                <button class="secondary-action" type="button">Retomar</button>
-                <button class="danger-action" type="button">Saída</button>
+                <button class="primary-action"
+                        type="button"
+                        disabled="@_submitting"
+                        @onclick="ClockInAsync">
+                    Entrada
+                </button>
+                <button class="secondary-action"
+                        type="button"
+                        disabled="@_submitting"
+                        @onclick="BreakStartAsync">
+                    Pausa
+                </button>
+                <button class="secondary-action"
+                        type="button"
+                        disabled="@_submitting"
+                        @onclick="BreakEndAsync">
+                    Retomar
+                </button>
+                <button class="danger-action"
+                        type="button"
+                        disabled="@_submitting"
+                        @onclick="ClockOutAsync">
+                    Saída
+                </button>
             </div>
         </Authorized>
         <NotAuthorized Context="nonEmployeeContext">
@@ -28,3 +65,72 @@
         </NotAuthorized>
     </AuthorizeView>
 </section>
+
+@code {
+    private bool _submitting;
+    private string? _successMessage;
+    private string? _errorMessage;
+
+    private Task ClockInAsync() => PunchAsync("ClockIn", "Entrada");
+
+    private Task BreakStartAsync() => PunchAsync("BreakStart", "Pausa");
+
+    private Task BreakEndAsync() => PunchAsync("BreakEnd", "Retoma");
+
+    private Task ClockOutAsync() => PunchAsync("ClockOut", "Saída");
+
+    private async Task PunchAsync(string eventType, string displayName)
+    {
+        if (_submitting)
+        {
+            return;
+        }
+
+        _submitting = true;
+        _successMessage = null;
+        _errorMessage = null;
+
+        try
+        {
+            var position = await BrowserGeolocationService.GetCurrentPositionAsync(
+                CancellationToken.None);
+
+            var request = new AttendancePunchRequest(
+                eventType,
+                Guid.NewGuid(),
+                DateTimeOffset.UtcNow,
+                position.IsSuccess ? position.Latitude : null,
+                position.IsSuccess ? position.Longitude : null,
+                position.IsSuccess ? position.AccuracyMeters : null,
+                null,
+                null);
+
+            var result = await AttendanceApiClient.PunchAsync(
+                request,
+                CancellationToken.None);
+
+            var duplicateSuffix = result.IsDuplicate
+                ? " (pedido já registado)"
+                : string.Empty;
+
+            _successMessage =
+                $"{displayName} registada às {result.ServerTimestampUtc.ToLocalTime():HH:mm:ss}{duplicateSuffix}.";
+        }
+        catch (AttendanceApiException exception)
+        {
+            _errorMessage = exception.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _errorMessage = "Não foi possível comunicar com a API.";
+        }
+        catch (TaskCanceledException)
+        {
+            _errorMessage = "O pedido de picagem foi cancelado.";
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}

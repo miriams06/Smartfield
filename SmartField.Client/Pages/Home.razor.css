@@ -1,0 +1,22 @@
+.attendance-feedback {
+    margin: 1rem 0;
+    padding: 0.85rem 1rem;
+    border: 1px solid;
+    border-radius: 0.5rem;
+    font-weight: 600;
+}
+
+.attendance-feedback--success {
+    border-color: #8fd0bf;
+    background: #eef9f6;
+}
+
+.attendance-feedback--error {
+    border-color: #e4a3a0;
+    background: #fff1f0;
+}
+
+.action-grid button:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}

@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SmartField.Application.Attendance;
 using SmartField.Application.Employees;
 using SmartField.Application.Geolocation;
 using SmartField.Application.WorkSites;
+using SmartField.Infrastructure.Attendance;
 using SmartField.Infrastructure.Employees;
 using SmartField.Infrastructure.Geolocation;
 using SmartField.Infrastructure.WorkSites;
@@ -20,6 +22,7 @@ public static class DependencyInjection
 
         services.AddDbContext<SmartFieldDbContext>(options =>
             options.UseSqlServer(connectionString));
+        services.AddScoped<IAttendanceStore, AttendanceStore>();
         services.AddScoped<IEmployeeStore, EmployeeStore>();
         services.AddScoped<IGeolocationStore, GeolocationStore>();
         services.AddScoped<IWorkSiteStore, WorkSiteStore>();

@@ -1,0 +1,89 @@
+namespace SmartField.Application.Attendance;
+
+public sealed record AttendancePunchRequest(
+    string? EventType,
+    Guid ClientEventId,
+    DateTimeOffset? ClientTimestampUtc,
+    decimal? Latitude,
+    decimal? Longitude,
+    decimal? AccuracyMeters,
+    Guid? WorkSiteId,
+    Guid? ProjectId);
+
+public sealed record AttendancePunchDto(
+    Guid Id,
+    Guid EmployeeId,
+    string EventType,
+    Guid ClientEventId,
+    DateTimeOffset ServerTimestampUtc,
+    DateTimeOffset? ClientTimestampUtc,
+    decimal? Latitude,
+    decimal? Longitude,
+    decimal? AccuracyMeters,
+    Guid? WorkSiteId,
+    Guid? ProjectId,
+    bool? IsInsideGeofence,
+    decimal? DistanceFromWorkSiteMeters,
+    bool IsDuplicate);
+
+public enum AttendanceError
+{
+    None = 0,
+    CompanyUnavailable = 1,
+    UserUnavailable = 2,
+    EmployeeUnavailable = 3,
+    Validation = 4,
+    InvalidSequence = 5,
+    GeofenceRejected = 6,
+    WorkSiteNotFound = 7,
+    ProjectNotFound = 8,
+    ClientEventConflict = 9
+}
+
+public sealed record AttendanceResult<T>(
+    T? Value,
+    AttendanceError Error,
+    IReadOnlyDictionary<string, string[]> ValidationErrors,
+    string? Detail)
+    where T : class
+{
+    public bool IsSuccess => Error == AttendanceError.None;
+
+    public static AttendanceResult<T> Success(T value)
+    {
+        return new AttendanceResult<T>(
+            value,
+            AttendanceError.None,
+            new Dictionary<string, string[]>(),
+            null);
+    }
+
+    public static AttendanceResult<T> Failure(
+        AttendanceError error,
+        string? detail = null)
+    {
+        return new AttendanceResult<T>(
+            null,
+            error,
+            new Dictionary<string, string[]>(),
+            detail);
+    }
+
+    public static AttendanceResult<T> Invalid(
+        IReadOnlyDictionary<string, string[]> validationErrors)
+    {
+        return new AttendanceResult<T>(
+            null,
+            AttendanceError.Validation,
+            validationErrors,
+            null);
+    }
+}
+
+public sealed class AttendanceClientEventConflictException : Exception
+{
+    public AttendanceClientEventConflictException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
