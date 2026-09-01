@@ -25,6 +25,31 @@ public sealed class AttendanceApiClient
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<AttendanceHistoryDayDto>> GetHistoryAsync(
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(
+            "api/attendance/history",
+            cancellationToken);
+
+        return await ReadRequiredAsync<List<AttendanceHistoryDayDto>>(
+            response,
+            cancellationToken);
+    }
+
+    public async Task<AttendanceDayDetailDto> GetDayAsync(
+        string date,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(
+            $"api/attendance/day/{Uri.EscapeDataString(date)}",
+            cancellationToken);
+
+        return await ReadRequiredAsync<AttendanceDayDetailDto>(
+            response,
+            cancellationToken);
+    }
+
     public async Task<AttendancePunchDto> PunchAsync(
         AttendancePunchRequest request,
         CancellationToken cancellationToken)
@@ -91,7 +116,7 @@ public sealed class AttendanceApiClient
         var message = validationMessage
             ?? problem?.Detail
             ?? problem?.Title
-            ?? $"A picagem falhou com o estado {(int)response.StatusCode}.";
+            ?? $"O pedido de assiduidade falhou com o estado {(int)response.StatusCode}.";
 
         return new AttendanceApiException(response.StatusCode, message);
     }

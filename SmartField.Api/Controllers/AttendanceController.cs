@@ -42,6 +42,33 @@ public sealed class AttendanceController : ControllerBase
         return Ok(result.Value);
     }
 
+    [HttpGet("history")]
+    public async Task<ActionResult<IReadOnlyList<AttendanceHistoryDayDto>>> GetHistory(
+        CancellationToken cancellationToken)
+    {
+        var result = await attendanceService.GetHistoryAsync(cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapFailure(result);
+        }
+
+        return Ok(result.Value);
+    }
+
+    [HttpGet("day/{date}")]
+    public async Task<ActionResult<AttendanceDayDetailDto>> GetDay(
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var result = await attendanceService.GetDayAsync(date, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapFailure(result);
+        }
+
+        return Ok(result.Value);
+    }
+
     [HttpPost("punch")]
     public async Task<ActionResult<AttendancePunchDto>> Punch(
         AttendancePunchRequest request,
@@ -101,7 +128,7 @@ public sealed class AttendanceController : ControllerBase
             }),
             _ => Problem(
                 statusCode: StatusCodes.Status500InternalServerError,
-                title: "Não foi possível registar a picagem.")
+                title: "Não foi possível processar o pedido de assiduidade.")
         };
     }
 }

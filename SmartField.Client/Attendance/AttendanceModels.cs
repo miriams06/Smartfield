@@ -42,6 +42,42 @@ public sealed record AttendanceStateDto(
     int BreakCount,
     DateTimeOffset CalculatedAtUtc);
 
+public sealed record AttendanceHistoryDayDto(
+    string Date,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    int BreakCount,
+    int BreakMinutes,
+    int WorkedMinutes,
+    bool HasOutsideGeofence);
+
+public sealed record AttendanceDayDetailDto(
+    string Date,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    IReadOnlyList<AttendanceBreakDto> Breaks,
+    int WorkedMinutes,
+    int BreakMinutes,
+    string CurrentStatus,
+    IReadOnlyList<string> NextAllowedActions,
+    bool HasOutsideGeofence,
+    IReadOnlyList<AttendanceHistoryEventDto> Events);
+
+public sealed record AttendanceBreakDto(
+    DateTimeOffset StartedAtUtc,
+    DateTimeOffset? EndedAtUtc,
+    int Minutes);
+
+public sealed record AttendanceHistoryEventDto(
+    Guid Id,
+    string EventType,
+    DateTimeOffset ServerTimestampUtc,
+    DateTimeOffset? ClientTimestampUtc,
+    Guid? WorkSiteId,
+    Guid? ProjectId,
+    bool? IsInsideGeofence,
+    decimal? DistanceFromWorkSiteMeters);
+
 public sealed class AttendanceApiException : Exception
 {
     public AttendanceApiException(HttpStatusCode statusCode, string message)
