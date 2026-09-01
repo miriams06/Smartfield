@@ -16,6 +16,19 @@ public sealed class AttendanceController : ControllerBase
         this.attendanceService = attendanceService;
     }
 
+    [HttpGet("state")]
+    public async Task<ActionResult<AttendanceStateDto>> GetState(
+        CancellationToken cancellationToken)
+    {
+        var result = await attendanceService.GetStateAsync(cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapFailure(result);
+        }
+
+        return Ok(result.Value);
+    }
+
     [HttpPost("punch")]
     public async Task<ActionResult<AttendancePunchDto>> Punch(
         AttendancePunchRequest request,

@@ -21,6 +21,26 @@ public class AttendanceServiceTests
     private static readonly DateTimeOffset ServerNow =
         new(2026, 8, 31, 17, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public async Task GetStateAsync_ReturnsAllowedNextOperations()
+    {
+        var store = new FakeAttendanceStore
+        {
+            LastEventType = AttendanceEventType.ClockIn
+        };
+        var service = CreateService(store);
+
+        var result = await service.GetStateAsync(CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(EmployeeId, result.Value?.EmployeeId);
+        Assert.Equal("Working", result.Value?.CurrentState);
+        Assert.Equal("ClockIn", result.Value?.LastEventType);
+        Assert.Equal(
+            ["BreakStart", "ClockOut"],
+            result.Value?.AllowedEventTypes);
+    }
+
     [Theory]
     [InlineData(null, "ClockIn")]
     [InlineData(AttendanceEventType.ClockIn, "BreakStart")]
@@ -164,6 +184,32 @@ public class AttendanceServiceTests
 
         Assert.Equal(AttendanceError.InvalidSequence, result.Error);
         Assert.Empty(store.AttendanceEvents);
+        Assert.Equal(0, store.SaveChangesCalls);
+    }
+
+    [Theory]
+    [InlineData(null, "ClockOut")]
+    [InlineData(null, "BreakStart")]
+    [InlineData(AttendanceEventType.ClockIn, "BreakEnd")]
+    [InlineData(AttendanceEventType.ClockIn, "ClockIn")]
+    public async Task PunchAsync_RejectsPlannerInvalidSequences(
+        AttendanceEventType? previous,
+        string next)
+    {
+        var store = new FakeAttendanceStore
+        {
+            LastEventType = previous
+        };
+        var service = CreateService(store);
+
+        var result = await service.PunchAsync(
+            CreateRequest(next),
+            CancellationToken.None);
+
+        Assert.Equal(AttendanceError.InvalidSequence, result.Error);
+        Assert.Empty(store.AttendanceEvents);
+        Assert.Empty(store.AuditLogs);
+        Assert.Empty(store.OutboxItems);
         Assert.Equal(0, store.SaveChangesCalls);
     }
 

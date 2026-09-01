@@ -26,6 +26,12 @@ public sealed record AttendancePunchDto(
     decimal? DistanceFromWorkSiteMeters,
     bool IsDuplicate);
 
+public sealed record AttendanceStateDto(
+    Guid EmployeeId,
+    string CurrentState,
+    string? LastEventType,
+    IReadOnlyList<string> AllowedEventTypes);
+
 public enum AttendanceError
 {
     None = 0,

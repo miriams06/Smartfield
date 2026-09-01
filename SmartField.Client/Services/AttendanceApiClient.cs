@@ -13,6 +13,18 @@ public sealed class AttendanceApiClient
         this.httpClient = httpClient;
     }
 
+    public async Task<AttendanceStateDto> GetStateAsync(
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(
+            "api/attendance/state",
+            cancellationToken);
+
+        return await ReadRequiredAsync<AttendanceStateDto>(
+            response,
+            cancellationToken);
+    }
+
     public async Task<AttendancePunchDto> PunchAsync(
         AttendancePunchRequest request,
         CancellationToken cancellationToken)
@@ -22,6 +34,16 @@ public sealed class AttendanceApiClient
             request,
             cancellationToken);
 
+        return await ReadRequiredAsync<AttendancePunchDto>(
+            response,
+            cancellationToken);
+    }
+
+    private static async Task<T> ReadRequiredAsync<T>(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+        where T : class
+    {
         if (!response.IsSuccessStatusCode)
         {
             throw await CreateExceptionAsync(response, cancellationToken);
@@ -29,7 +51,7 @@ public sealed class AttendanceApiClient
 
         try
         {
-            var value = await response.Content.ReadFromJsonAsync<AttendancePunchDto>(
+            var value = await response.Content.ReadFromJsonAsync<T>(
                 cancellationToken: cancellationToken);
 
             return value ?? throw new AttendanceApiException(

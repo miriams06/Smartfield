@@ -28,6 +28,12 @@ public sealed record AttendancePunchDto(
     decimal? DistanceFromWorkSiteMeters,
     bool IsDuplicate);
 
+public sealed record AttendanceStateDto(
+    Guid EmployeeId,
+    string CurrentState,
+    string? LastEventType,
+    IReadOnlyList<string> AllowedEventTypes);
+
 public sealed class AttendanceApiException : Exception
 {
     public AttendanceApiException(HttpStatusCode statusCode, string message)

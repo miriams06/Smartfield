@@ -28,33 +28,33 @@ public sealed class AttendanceService : IAttendanceService
         this.timeProvider = timeProvider;
     }
 
+    public async Task<AttendanceResult<AttendanceStateDto>> GetStateAsync(
+        CancellationToken cancellationToken)
+    {
+        var context = await GetAttendanceContextAsync(cancellationToken);
+        if (!context.IsSuccess)
+        {
+            return AttendanceResult<AttendanceStateDto>.Failure(context.Error);
+        }
+
+        var lastEventType = await attendanceStore.GetLastEventTypeAsync(
+            context.CompanyId,
+            context.EmployeeId,
+            cancellationToken);
+
+        return AttendanceResult<AttendanceStateDto>.Success(
+            BuildState(context.EmployeeId, lastEventType));
+    }
+
     public async Task<AttendanceResult<AttendancePunchDto>> PunchAsync(
         AttendancePunchRequest request,
         CancellationToken cancellationToken)
     {
-        var companyId = currentCompanyProvider.CompanyId;
-        if (!companyId.HasValue)
+        var context = await GetAttendanceContextAsync(cancellationToken);
+        if (!context.IsSuccess)
         {
             return AttendanceResult<AttendancePunchDto>.Failure(
-                AttendanceError.CompanyUnavailable);
-        }
-
-        var userId = currentUserProvider.UserId;
-        if (!userId.HasValue)
-        {
-            return AttendanceResult<AttendancePunchDto>.Failure(
-                AttendanceError.UserUnavailable);
-        }
-
-        var employeeId = currentUserProvider.EmployeeId;
-        if (!employeeId.HasValue
-            || !await attendanceStore.EmployeeCanPunchAsync(
-                companyId.Value,
-                employeeId.Value,
-                cancellationToken))
-        {
-            return AttendanceResult<AttendancePunchDto>.Failure(
-                AttendanceError.EmployeeUnavailable);
+                context.Error);
         }
 
         var validation = ValidateRequest(request);
@@ -64,8 +64,8 @@ public sealed class AttendanceService : IAttendanceService
         }
 
         var existing = await attendanceStore.GetByClientEventIdAsync(
-            companyId.Value,
-            employeeId.Value,
+            context.CompanyId,
+            context.EmployeeId,
             request.ClientEventId,
             cancellationToken);
 
@@ -77,7 +77,7 @@ public sealed class AttendanceService : IAttendanceService
 
         if (request.ProjectId.HasValue
             && !await attendanceStore.ProjectExistsAsync(
-                companyId.Value,
+                context.CompanyId,
                 request.ProjectId.Value,
                 cancellationToken))
         {
@@ -122,23 +122,25 @@ public sealed class AttendanceService : IAttendanceService
         }
 
         var lastEventType = await attendanceStore.GetLastEventTypeAsync(
-            companyId.Value,
-            employeeId.Value,
+            context.CompanyId,
+            context.EmployeeId,
             cancellationToken);
 
-        if (!IsSequenceAllowed(lastEventType, validation.EventType))
+        if (!AttendanceSequenceRules.IsAllowed(lastEventType, validation.EventType))
         {
             return AttendanceResult<AttendancePunchDto>.Failure(
                 AttendanceError.InvalidSequence,
-                BuildSequenceError(lastEventType, validation.EventType));
+                AttendanceSequenceRules.BuildSequenceError(
+                    lastEventType,
+                    validation.EventType));
         }
 
         var serverTimestampUtc = timeProvider.GetUtcNow();
         var attendanceEvent = new AttendanceEvent
         {
             Id = Guid.NewGuid(),
-            CompanyId = companyId.Value,
-            EmployeeId = employeeId.Value,
+            CompanyId = context.CompanyId,
+            EmployeeId = context.EmployeeId,
             EventType = validation.EventType,
             ServerTimestampUtc = serverTimestampUtc,
             ClientTimestampUtc = request.ClientTimestampUtc?.ToUniversalTime(),
@@ -160,8 +162,8 @@ public sealed class AttendanceService : IAttendanceService
         attendanceStore.Add(new AuditLog
         {
             Id = Guid.NewGuid(),
-            CompanyId = companyId.Value,
-            UserId = userId.Value,
+            CompanyId = context.CompanyId,
+            UserId = context.UserId,
             EntityType = nameof(AttendanceEvent),
             EntityId = attendanceEvent.Id,
             Action = "Created",
@@ -172,7 +174,7 @@ public sealed class AttendanceService : IAttendanceService
         attendanceStore.Add(new IntegrationOutbox
         {
             Id = Guid.NewGuid(),
-            CompanyId = companyId.Value,
+            CompanyId = context.CompanyId,
             EventType = "AttendanceEventCreated",
             EntityType = nameof(AttendanceEvent),
             EntityId = attendanceEvent.Id,
@@ -187,8 +189,8 @@ public sealed class AttendanceService : IAttendanceService
         catch (AttendanceClientEventConflictException)
         {
             existing = await attendanceStore.GetByClientEventIdAsync(
-                companyId.Value,
-                employeeId.Value,
+                context.CompanyId,
+                context.EmployeeId,
                 request.ClientEventId,
                 cancellationToken);
 
@@ -201,6 +203,37 @@ public sealed class AttendanceService : IAttendanceService
 
         return AttendanceResult<AttendancePunchDto>.Success(
             Map(attendanceEvent, isDuplicate: false));
+    }
+
+    private async Task<AttendanceContext> GetAttendanceContextAsync(
+        CancellationToken cancellationToken)
+    {
+        var companyId = currentCompanyProvider.CompanyId;
+        if (!companyId.HasValue)
+        {
+            return AttendanceContext.Failure(AttendanceError.CompanyUnavailable);
+        }
+
+        var userId = currentUserProvider.UserId;
+        if (!userId.HasValue)
+        {
+            return AttendanceContext.Failure(AttendanceError.UserUnavailable);
+        }
+
+        var employeeId = currentUserProvider.EmployeeId;
+        if (!employeeId.HasValue
+            || !await attendanceStore.EmployeeCanPunchAsync(
+                companyId.Value,
+                employeeId.Value,
+                cancellationToken))
+        {
+            return AttendanceContext.Failure(AttendanceError.EmployeeUnavailable);
+        }
+
+        return AttendanceContext.Success(
+            companyId.Value,
+            userId.Value,
+            employeeId.Value);
     }
 
     private static AttendanceRequestValidation ValidateRequest(
@@ -227,35 +260,6 @@ public sealed class AttendanceService : IAttendanceService
         }
 
         return new AttendanceRequestValidation(eventType, errors);
-    }
-
-    private static bool IsSequenceAllowed(
-        AttendanceEventType? lastEventType,
-        AttendanceEventType nextEventType)
-    {
-        return lastEventType switch
-        {
-            null => nextEventType == AttendanceEventType.ClockIn,
-            AttendanceEventType.ClockIn =>
-                nextEventType is AttendanceEventType.BreakStart
-                    or AttendanceEventType.ClockOut,
-            AttendanceEventType.BreakStart =>
-                nextEventType == AttendanceEventType.BreakEnd,
-            AttendanceEventType.BreakEnd =>
-                nextEventType is AttendanceEventType.BreakStart
-                    or AttendanceEventType.ClockOut,
-            AttendanceEventType.ClockOut =>
-                nextEventType == AttendanceEventType.ClockIn,
-            _ => false
-        };
-    }
-
-    private static string BuildSequenceError(
-        AttendanceEventType? lastEventType,
-        AttendanceEventType nextEventType)
-    {
-        var previous = lastEventType?.ToString() ?? "nenhuma picagem";
-        return $"A picagem {nextEventType} não é válida depois de {previous}.";
     }
 
     private static string SerializeEvent(AttendanceEvent attendanceEvent)
@@ -299,6 +303,50 @@ public sealed class AttendanceService : IAttendanceService
             attendanceEvent.IsInsideGeofence,
             attendanceEvent.DistanceFromWorkSiteMeters,
             isDuplicate);
+    }
+
+    private static AttendanceStateDto BuildState(
+        Guid employeeId,
+        AttendanceEventType? lastEventType)
+    {
+        return new AttendanceStateDto(
+            employeeId,
+            AttendanceSequenceRules.GetCurrentState(lastEventType),
+            lastEventType?.ToString(),
+            AttendanceSequenceRules
+                .GetAllowedNextEventTypes(lastEventType)
+                .Select(eventType => eventType.ToString())
+                .ToArray());
+    }
+
+    private sealed record AttendanceContext(
+        Guid CompanyId,
+        Guid UserId,
+        Guid EmployeeId,
+        AttendanceError Error)
+    {
+        public bool IsSuccess => Error == AttendanceError.None;
+
+        public static AttendanceContext Success(
+            Guid companyId,
+            Guid userId,
+            Guid employeeId)
+        {
+            return new AttendanceContext(
+                companyId,
+                userId,
+                employeeId,
+                AttendanceError.None);
+        }
+
+        public static AttendanceContext Failure(AttendanceError error)
+        {
+            return new AttendanceContext(
+                Guid.Empty,
+                Guid.Empty,
+                Guid.Empty,
+                error);
+        }
     }
 
     private sealed record AttendanceRequestValidation(

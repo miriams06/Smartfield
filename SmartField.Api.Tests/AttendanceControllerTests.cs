@@ -36,4 +36,18 @@ public class AttendanceControllerTests
         Assert.NotNull(attribute);
         Assert.Equal("punch", attribute.Template);
     }
+
+    [Fact]
+    public void Controller_ExposesStateRoute()
+    {
+        var method = typeof(AttendanceController)
+            .GetMethod(nameof(AttendanceController.GetState));
+        var attribute = method?
+            .GetCustomAttributes(typeof(HttpGetAttribute), inherit: false)
+            .OfType<HttpMethodAttribute>()
+            .SingleOrDefault();
+
+        Assert.NotNull(attribute);
+        Assert.Equal("state", attribute.Template);
+    }
 }
