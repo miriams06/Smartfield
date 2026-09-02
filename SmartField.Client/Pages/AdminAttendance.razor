@@ -295,9 +295,12 @@
 
                                                 <label>
                                                     Nova hora
-                                                    <InputText class="form-control"
-                                                               type="datetime-local"
-                                                               @bind-Value="_correctionEditor.CorrectedTimestampLocal" />
+                                                    <input class="form-control"
+                                                           type="datetime-local"
+                                                           step="60"
+                                                           value="@_correctionEditor.CorrectedTimestampLocal"
+                                                           @onchange="HandleCorrectionTimestampChanged"
+                                                           disabled="@_isSavingCorrection" />
                                                 </label>
 
                                                 <label class="admin-attendance-correction__reason">
@@ -513,6 +516,11 @@
         _correctionEditor = new CorrectionEditorModel();
     }
 
+    private void HandleCorrectionTimestampChanged(ChangeEventArgs args)
+    {
+        _correctionEditor.CorrectedTimestampLocal = args.Value?.ToString() ?? string.Empty;
+    }
+
     private async Task SaveCorrectionAsync()
     {
         _isSavingCorrection = true;
@@ -581,14 +589,40 @@
 
     private static DateTimeOffset? ParseLocalDateTime(string? value)
     {
-        if (!DateTime.TryParseExact(
-            value,
-            "yyyy-MM-ddTHH:mm",
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.None,
-            out var parsed))
+        if (string.IsNullOrWhiteSpace(value))
         {
             return null;
+        }
+
+        var trimmedValue = value.Trim();
+        var acceptedFormats = new[]
+        {
+            "yyyy-MM-ddTHH:mm",
+            "yyyy-MM-ddTHH:mm:ss",
+            "yyyy-MM-ddTHH:mm:ss.fff",
+            "yyyy-MM-dd HH:mm",
+            "yyyy-MM-dd HH:mm:ss",
+            "dd/MM/yyyy HH:mm",
+            "dd/MM/yyyy HH:mm:ss",
+            "dd-MM-yyyy HH:mm",
+            "dd-MM-yyyy HH:mm:ss"
+        };
+
+        if (!DateTime.TryParseExact(
+            trimmedValue,
+            acceptedFormats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AllowWhiteSpaces,
+            out var parsed))
+        {
+            if (!DateTime.TryParse(
+                trimmedValue,
+                PortugueseCulture,
+                DateTimeStyles.AllowWhiteSpaces,
+                out parsed))
+            {
+                return null;
+            }
         }
 
         return new DateTimeOffset(
