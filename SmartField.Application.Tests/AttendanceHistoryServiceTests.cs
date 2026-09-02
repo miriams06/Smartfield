@@ -328,6 +328,22 @@ public class AttendanceHistoryServiceTests
             return Task.FromResult<IReadOnlyList<AttendanceEventCorrectionReference>>([]);
         }
 
+        public Task<IReadOnlyList<AttendanceReferenceLookup>> GetWorkSiteReferencesAsync(
+            Guid companyId,
+            IReadOnlyCollection<Guid> workSiteIds,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<AttendanceReferenceLookup>>([]);
+        }
+
+        public Task<IReadOnlyList<AttendanceReferenceLookup>> GetProjectReferencesAsync(
+            Guid companyId,
+            IReadOnlyCollection<Guid> projectIds,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<IReadOnlyList<AttendanceReferenceLookup>>([]);
+        }
+
         public void Add(AttendanceEvent attendanceEvent) => Events.Add(attendanceEvent);
         public void Add(AttendanceCorrection attendanceCorrection) { }
         public void Add(AuditLog auditLog) { }

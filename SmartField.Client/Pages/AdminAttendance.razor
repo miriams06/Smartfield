@@ -6,6 +6,7 @@
 @using SmartField.Client.Attendance
 @using SmartField.Client.Employees
 @using SmartField.Client.WorkSites
+@inject IJSRuntime JSRuntime
 @inject AttendanceApiClient AttendanceApiClient
 @inject EmployeeApiClient EmployeeApiClient
 @inject WorkSiteApiClient WorkSiteApiClient
@@ -28,10 +29,10 @@
         </div>
     }
 
-    @if (!string.IsNullOrWhiteSpace(_correctionSuccessMessage))
+    @if (!string.IsNullOrWhiteSpace(_successMessage))
     {
         <div class="admin-attendance-message admin-attendance-message--success" role="status">
-            @_correctionSuccessMessage
+            @_successMessage
         </div>
     }
 
@@ -42,6 +43,24 @@
                    type="date"
                    value="@_selectedDate"
                    @onchange="HandleDateChanged"
+                   disabled="@_isBusy" />
+        </label>
+
+        <label>
+            Exportar de
+            <input class="form-control"
+                   type="date"
+                   value="@_exportFromDate"
+                   @onchange="HandleExportFromDateChanged"
+                   disabled="@_isBusy" />
+        </label>
+
+        <label>
+            Exportar até
+            <input class="form-control"
+                   type="date"
+                   value="@_exportToDate"
+                   @onchange="HandleExportToDateChanged"
                    disabled="@_isBusy" />
         </label>
 
@@ -73,6 +92,9 @@
             </button>
             <button class="btn btn-outline-secondary" type="button" @onclick="ClearFiltersAsync" disabled="@_isBusy">
                 Limpar
+            </button>
+            <button class="btn btn-outline-secondary" type="button" @onclick="ExportCsvAsync" disabled="@_isBusy">
+                @(_isExporting ? "A exportar..." : "Exportar CSV")
             </button>
         </div>
     </div>
@@ -359,11 +381,17 @@
     private Guid? _selectedEmployeeDetailId;
     private string? _errorMessage;
     private string? _detailErrorMessage;
-    private string? _correctionSuccessMessage;
+    private string? _successMessage;
     private bool _isLoading;
     private bool _isLoadingDetail;
     private bool _isSavingCorrection;
-    private bool _isBusy => _isLoading || _isLoadingDetail || _isSavingCorrection;
+    private bool _isExporting;
+    private string _exportFromDate = DateOnly.FromDateTime(DateTime.Today)
+        .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private string _exportToDate = DateOnly.FromDateTime(DateTime.Today)
+        .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private bool _isBusy =>
+        _isLoading || _isLoadingDetail || _isSavingCorrection || _isExporting;
 
     protected override async Task OnInitializedAsync()
     {
@@ -419,7 +447,7 @@
         _isLoading = true;
         _errorMessage = null;
         _detailErrorMessage = null;
-        _correctionSuccessMessage = null;
+        _successMessage = null;
         _selectedEmployeeDetailId = null;
         _detail = null;
         _correctionEditor = new CorrectionEditorModel();
@@ -451,6 +479,8 @@
     {
         _selectedEmployeeId = null;
         _selectedWorkSiteId = null;
+        _exportFromDate = _selectedDate;
+        _exportToDate = _selectedDate;
         await LoadDayAsync();
     }
 
@@ -460,6 +490,86 @@
         if (!string.IsNullOrWhiteSpace(value))
         {
             _selectedDate = value;
+        }
+    }
+
+    private void HandleExportFromDateChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            _exportFromDate = value;
+        }
+    }
+
+    private void HandleExportToDateChanged(ChangeEventArgs args)
+    {
+        var value = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            _exportToDate = value;
+        }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        _isExporting = true;
+        _errorMessage = null;
+        _detailErrorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            if (!DateOnly.TryParseExact(
+                    _exportFromDate,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var fromDate)
+                || !DateOnly.TryParseExact(
+                    _exportToDate,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var toDate))
+            {
+                _errorMessage = "Indica um período válido para exportação.";
+                return;
+            }
+
+            if (toDate < fromDate)
+            {
+                _errorMessage = "A data final da exportação não pode ser anterior à data inicial.";
+                return;
+            }
+
+            var export = await AttendanceApiClient.ExportBackofficeCsvAsync(
+                _exportFromDate,
+                _exportToDate,
+                ParseOptionalGuid(_selectedEmployeeId),
+                ParseOptionalGuid(_selectedWorkSiteId),
+                CancellationToken.None);
+
+            await JSRuntime.InvokeVoidAsync(
+                "smartFieldDownloads.downloadTextFile",
+                export.FileName,
+                export.ContentType,
+                export.Content);
+
+            _successMessage = "Exportação CSV gerada.";
+        }
+        catch (AttendanceApiException exception)
+        {
+            _errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException or JSException)
+        {
+            _errorMessage = "Não foi possível exportar a assiduidade.";
+        }
+        finally
+        {
+            _isExporting = false;
         }
     }
 
@@ -477,7 +587,7 @@
         _selectedEmployeeDetailId = row.EmployeeId;
         _detail = null;
         _detailErrorMessage = null;
-        _correctionSuccessMessage = null;
+        _successMessage = null;
         _correctionEditor = new CorrectionEditorModel();
         _isLoadingDetail = true;
 
@@ -506,7 +616,7 @@
     private void StartCorrection(AttendanceBackofficeEventDto attendanceEvent)
     {
         _detailErrorMessage = null;
-        _correctionSuccessMessage = null;
+        _successMessage = null;
         _correctionEditor = new CorrectionEditorModel();
         _correctionEditor.Load(attendanceEvent);
     }
@@ -525,7 +635,7 @@
     {
         _isSavingCorrection = true;
         _detailErrorMessage = null;
-        _correctionSuccessMessage = null;
+        _successMessage = null;
 
         try
         {
@@ -544,7 +654,7 @@
                     _correctionEditor.Reason),
                 CancellationToken.None);
 
-            _correctionSuccessMessage = "Correção guardada com sucesso.";
+            _successMessage = "Correção guardada com sucesso.";
             _correctionEditor = new CorrectionEditorModel();
             await ReloadSelectedDayAndDetailAsync();
         }

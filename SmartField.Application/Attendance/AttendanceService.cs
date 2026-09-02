@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using System.Text;
 using SmartField.Application.Abstractions;
 using SmartField.Application.Geolocation;
 using SmartField.Application.IntegrationOutbox;
@@ -319,6 +321,127 @@ public sealed class AttendanceService : IAttendanceService
             new AttendanceBackofficeDayDto(
                 filter.Date.ToString("yyyy-MM-dd"),
                 rows));
+    }
+
+    public async Task<AttendanceResult<AttendanceBackofficeCsvExportDto>> ExportBackofficeCsvAsync(
+        AttendanceBackofficeExportFilter filter,
+        CancellationToken cancellationToken)
+    {
+        var validationErrors = ValidateBackofficeExportFilter(filter);
+        if (validationErrors.Count > 0)
+        {
+            return AttendanceResult<AttendanceBackofficeCsvExportDto>.Invalid(validationErrors);
+        }
+
+        var companyId = currentCompanyProvider.CompanyId;
+        if (!companyId.HasValue)
+        {
+            return AttendanceResult<AttendanceBackofficeCsvExportDto>.Failure(
+                AttendanceError.CompanyUnavailable);
+        }
+
+        var companyTimeZone = await GetCurrentCompanyTimeZoneAsync(
+            companyId.Value,
+            cancellationToken);
+        if (companyTimeZone is null)
+        {
+            return AttendanceResult<AttendanceBackofficeCsvExportDto>.Failure(
+                AttendanceError.CompanyUnavailable);
+        }
+
+        var employees = await attendanceStore.GetBackofficeEmployeesAsync(
+            companyId.Value,
+            filter.EmployeeId,
+            cancellationToken);
+        var fromUtc = ConvertLocalDateToUtc(filter.FromDate, companyTimeZone);
+        var toUtc = ConvertLocalDateToUtc(filter.ToDate.AddDays(1), companyTimeZone);
+        var events = await attendanceStore.GetEventsBetweenAsync(
+            companyId.Value,
+            fromUtc,
+            toUtc,
+            filter.EmployeeId,
+            cancellationToken);
+        var latestCorrections = await GetLatestCorrectionsByEventIdAsync(
+            companyId.Value,
+            events,
+            cancellationToken);
+        var correctedEvents = events
+            .Select(attendanceEvent => ApplyCorrection(attendanceEvent, latestCorrections))
+            .Where(attendanceEvent =>
+            {
+                var localDate = DateOnly.FromDateTime(
+                    TimeZoneInfo.ConvertTime(
+                        attendanceEvent.ServerTimestampUtc,
+                        companyTimeZone).Date);
+
+                return localDate >= filter.FromDate && localDate <= filter.ToDate;
+            })
+            .ToArray();
+        var workSiteIds = correctedEvents
+            .Select(attendanceEvent => attendanceEvent.WorkSiteId)
+            .Concat(employees.Select(employee => employee.DefaultWorkSiteId))
+            .OfType<Guid>()
+            .Distinct()
+            .ToArray();
+        var projectIds = correctedEvents
+            .Select(attendanceEvent => attendanceEvent.ProjectId)
+            .OfType<Guid>()
+            .Distinct()
+            .ToArray();
+        var workSites = (await attendanceStore.GetWorkSiteReferencesAsync(
+                companyId.Value,
+                workSiteIds,
+                cancellationToken))
+            .ToDictionary(reference => reference.Id, reference => reference.Value);
+        var projects = (await attendanceStore.GetProjectReferencesAsync(
+                companyId.Value,
+                projectIds,
+                cancellationToken))
+            .ToDictionary(reference => reference.Id, reference => reference.Value);
+
+        var employeeLookup = employees.ToDictionary(
+            employee => employee.EmployeeId,
+            employee => employee);
+        var calculatedAtUtc = timeProvider.GetUtcNow();
+        var companyToday = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTime(calculatedAtUtc, companyTimeZone).Date);
+        var rows = correctedEvents
+            .Where(attendanceEvent => employeeLookup.ContainsKey(attendanceEvent.EmployeeId))
+            .GroupBy(attendanceEvent => new
+            {
+                attendanceEvent.EmployeeId,
+                Date = DateOnly.FromDateTime(
+                    TimeZoneInfo.ConvertTime(
+                        attendanceEvent.ServerTimestampUtc,
+                        companyTimeZone).Date)
+            })
+            .OrderBy(group => group.Key.Date)
+            .ThenBy(group => employeeLookup[group.Key.EmployeeId].EmployeeName)
+            .ThenBy(group => employeeLookup[group.Key.EmployeeId].EmployeeNumber)
+            .Select(group => BuildExportRow(
+                group.Key.Date,
+                employeeLookup[group.Key.EmployeeId],
+                OrderEvents(group).ToArray(),
+                companyToday,
+                calculatedAtUtc,
+                companyTimeZone,
+                workSites,
+                projects))
+            .Where(row =>
+                !filter.WorkSiteId.HasValue
+                || row.WorkSiteIds.Contains(filter.WorkSiteId.Value)
+                || row.DefaultWorkSiteId == filter.WorkSiteId.Value)
+            .ToArray();
+        var content = BuildCsv(rows);
+        var fileName = string.Create(
+            CultureInfo.InvariantCulture,
+            $"smartfield-attendance-{filter.FromDate:yyyyMMdd}-{filter.ToDate:yyyyMMdd}.csv");
+
+        return AttendanceResult<AttendanceBackofficeCsvExportDto>.Success(
+            new AttendanceBackofficeCsvExportDto(
+                fileName,
+                "text/csv; charset=utf-8",
+                content));
     }
 
     public async Task<AttendanceResult<AttendanceBackofficeDayDetailDto>> GetBackofficeDayDetailAsync(
@@ -1051,6 +1174,165 @@ public sealed class AttendanceService : IAttendanceService
         return errors;
     }
 
+    private static IReadOnlyDictionary<string, string[]> ValidateBackofficeExportFilter(
+        AttendanceBackofficeExportFilter filter)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (filter.EmployeeId == Guid.Empty)
+        {
+            errors[nameof(filter.EmployeeId)] = ["O funcionário selecionado não é válido."];
+        }
+
+        if (filter.WorkSiteId == Guid.Empty)
+        {
+            errors[nameof(filter.WorkSiteId)] = ["O local de trabalho selecionado não é válido."];
+        }
+
+        if (filter.ToDate < filter.FromDate)
+        {
+            errors[nameof(filter.ToDate)] =
+                ["A data final não pode ser anterior à data inicial."];
+        }
+
+        return errors;
+    }
+
+    private static AttendanceBackofficeExportRow BuildExportRow(
+        DateOnly date,
+        AttendanceBackofficeEmployeeReference employee,
+        IReadOnlyList<AttendanceEvent> orderedEvents,
+        DateOnly companyToday,
+        DateTimeOffset calculatedAtUtc,
+        TimeZoneInfo companyTimeZone,
+        IReadOnlyDictionary<Guid, string> workSites,
+        IReadOnlyDictionary<Guid, string> projects)
+    {
+        var calculationPoint = GetHistoryCalculationPoint(
+            date,
+            companyToday,
+            orderedEvents,
+            calculatedAtUtc);
+        var metrics = CalculateDailyMetrics(orderedEvents, calculationPoint);
+        var workSiteIds = orderedEvents
+            .Select(attendanceEvent => attendanceEvent.WorkSiteId)
+            .OfType<Guid>()
+            .Distinct()
+            .ToArray();
+        var workSite = string.Join(
+            " | ",
+            workSiteIds
+                .Select(workSiteId =>
+                    workSites.TryGetValue(workSiteId, out var value)
+                        ? value
+                        : null)
+                .OfType<string>()
+                .DefaultIfEmpty(employee.DefaultWorkSiteName ?? string.Empty));
+        var projectCode = string.Join(
+            " | ",
+            orderedEvents
+                .Select(attendanceEvent => attendanceEvent.ProjectId)
+                .OfType<Guid>()
+                .Distinct()
+                .Select(projectId =>
+                    projects.TryGetValue(projectId, out var value)
+                        ? value
+                        : null)
+                .OfType<string>());
+
+        return new AttendanceBackofficeExportRow(
+            date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            employee.EmployeeNumber,
+            employee.EmployeeName,
+            FormatLocalTime(metrics.ClockInAtUtc, companyTimeZone),
+            FormatLocalTime(GetLastClockOut(orderedEvents), companyTimeZone),
+            metrics.BreakDurationMinutes,
+            metrics.WorkedDurationMinutes,
+            workSite,
+            projectCode,
+            GetGeofenceStatus(orderedEvents),
+            employee.DefaultWorkSiteId,
+            workSiteIds);
+    }
+
+    private static string BuildCsv(IReadOnlyList<AttendanceBackofficeExportRow> rows)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(
+            "Date,EmployeeNumber,EmployeeName,ClockIn,ClockOut,BreakMinutes,WorkedMinutes,WorkSite,ProjectCode,GeofenceStatus");
+
+        foreach (var row in rows)
+        {
+            AppendCsv(builder, row.Date);
+            builder.Append(',');
+            AppendCsv(builder, row.EmployeeNumber);
+            builder.Append(',');
+            AppendCsv(builder, row.EmployeeName);
+            builder.Append(',');
+            AppendCsv(builder, row.ClockIn);
+            builder.Append(',');
+            AppendCsv(builder, row.ClockOut);
+            builder.Append(',');
+            builder.Append(row.BreakMinutes.ToString(CultureInfo.InvariantCulture));
+            builder.Append(',');
+            builder.Append(row.WorkedMinutes.ToString(CultureInfo.InvariantCulture));
+            builder.Append(',');
+            AppendCsv(builder, row.WorkSite);
+            builder.Append(',');
+            AppendCsv(builder, row.ProjectCode);
+            builder.Append(',');
+            AppendCsv(builder, row.GeofenceStatus);
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static void AppendCsv(StringBuilder builder, string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return;
+        }
+
+        var mustQuote = value.Contains(',')
+            || value.Contains('"')
+            || value.Contains('\r')
+            || value.Contains('\n');
+
+        if (!mustQuote)
+        {
+            builder.Append(value);
+            return;
+        }
+
+        builder.Append('"');
+        builder.Append(value.Replace("\"", "\"\"", StringComparison.Ordinal));
+        builder.Append('"');
+    }
+
+    private static string FormatLocalTime(
+        DateTimeOffset? value,
+        TimeZoneInfo companyTimeZone)
+    {
+        return value.HasValue
+            ? TimeZoneInfo.ConvertTime(value.Value, companyTimeZone)
+                .ToString("HH:mm", CultureInfo.InvariantCulture)
+            : string.Empty;
+    }
+
+    private static string GetGeofenceStatus(IReadOnlyList<AttendanceEvent> events)
+    {
+        if (events.Any(attendanceEvent => attendanceEvent.IsInsideGeofence == false))
+        {
+            return "Fora da geofence";
+        }
+
+        return events.Any(attendanceEvent => attendanceEvent.IsInsideGeofence == true)
+            ? "Dentro da geofence"
+            : "Sem geofence";
+    }
+
     private async Task<IReadOnlyDictionary<Guid, AttendanceEventCorrectionReference>> GetLatestCorrectionsByEventIdAsync(
         Guid companyId,
         IReadOnlyList<AttendanceEvent> events,
@@ -1262,6 +1544,20 @@ public sealed class AttendanceService : IAttendanceService
         int WorkedDurationMinutes,
         int BreakDurationMinutes,
         int BreakCount);
+
+    private sealed record AttendanceBackofficeExportRow(
+        string Date,
+        string EmployeeNumber,
+        string EmployeeName,
+        string ClockIn,
+        string ClockOut,
+        int BreakMinutes,
+        int WorkedMinutes,
+        string WorkSite,
+        string ProjectCode,
+        string GeofenceStatus,
+        Guid? DefaultWorkSiteId,
+        IReadOnlyCollection<Guid> WorkSiteIds);
 
     private sealed record AttendanceContext(
         Guid CompanyId,

@@ -63,6 +63,16 @@ public interface IAttendanceStore
         IReadOnlyCollection<Guid> attendanceEventIds,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<AttendanceReferenceLookup>> GetWorkSiteReferencesAsync(
+        Guid companyId,
+        IReadOnlyCollection<Guid> workSiteIds,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<AttendanceReferenceLookup>> GetProjectReferencesAsync(
+        Guid companyId,
+        IReadOnlyCollection<Guid> projectIds,
+        CancellationToken cancellationToken);
+
     void Add(AttendanceEvent attendanceEvent);
 
     void Add(AttendanceCorrection attendanceCorrection);

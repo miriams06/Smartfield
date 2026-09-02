@@ -93,6 +93,12 @@ public sealed record AttendanceBackofficeDayFilter(
     Guid? EmployeeId,
     Guid? WorkSiteId);
 
+public sealed record AttendanceBackofficeExportFilter(
+    DateOnly FromDate,
+    DateOnly ToDate,
+    Guid? EmployeeId,
+    Guid? WorkSiteId);
+
 public sealed record AttendanceBackofficeDayDto(
     string Date,
     IReadOnlyList<AttendanceBackofficeEmployeeDayDto> Employees);
@@ -140,6 +146,11 @@ public sealed record AttendanceBackofficeEventDto(
     decimal? DistanceFromWorkSiteMeters,
     AttendanceCorrectionDto? Correction);
 
+public sealed record AttendanceBackofficeCsvExportDto(
+    string FileName,
+    string ContentType,
+    string Content);
+
 public sealed record AttendanceCorrectionRequest(
     string? CorrectedEventType,
     DateTimeOffset? CorrectedTimestampUtc,
@@ -168,6 +179,10 @@ public sealed record AttendanceBackofficeEmployeeReference(
     string EmployeeName,
     Guid? DefaultWorkSiteId,
     string? DefaultWorkSiteName);
+
+public sealed record AttendanceReferenceLookup(
+    Guid Id,
+    string Value);
 
 public sealed record AttendanceEventCorrectionReference(
     Guid Id,

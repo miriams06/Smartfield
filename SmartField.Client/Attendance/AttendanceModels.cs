@@ -110,6 +110,11 @@ public sealed record AttendanceBackofficeEventDto(
     decimal? DistanceFromWorkSiteMeters,
     AttendanceCorrectionDto? Correction);
 
+public sealed record AttendanceCsvExportDto(
+    string FileName,
+    string ContentType,
+    string Content);
+
 public sealed record AttendanceCorrectionRequest(
     string CorrectedEventType,
     DateTimeOffset? CorrectedTimestampUtc,

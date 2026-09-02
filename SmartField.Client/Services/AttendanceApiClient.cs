@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using SmartField.Client.Attendance;
 
@@ -78,6 +79,47 @@ public sealed class AttendanceApiClient
         return await ReadRequiredAsync<AttendanceBackofficeDayDto>(
             response,
             cancellationToken);
+    }
+
+    public async Task<AttendanceCsvExportDto> ExportBackofficeCsvAsync(
+        string fromDate,
+        string toDate,
+        Guid? employeeId,
+        Guid? workSiteId,
+        CancellationToken cancellationToken)
+    {
+        var query = new List<string>
+        {
+            $"fromDate={Uri.EscapeDataString(fromDate)}",
+            $"toDate={Uri.EscapeDataString(toDate)}"
+        };
+
+        if (employeeId.HasValue)
+        {
+            query.Add($"employeeId={employeeId.Value}");
+        }
+
+        if (workSiteId.HasValue)
+        {
+            query.Add($"workSiteId={workSiteId.Value}");
+        }
+
+        using var response = await httpClient.GetAsync(
+            $"api/attendance/admin/export.csv?{string.Join("&", query)}",
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateExceptionAsync(response, cancellationToken);
+        }
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        var fileName = GetFileName(response.Content.Headers.ContentDisposition)
+            ?? $"smartfield-attendance-{fromDate}-{toDate}.csv";
+        var contentType = response.Content.Headers.ContentType?.ToString()
+            ?? "text/csv; charset=utf-8";
+
+        return new AttendanceCsvExportDto(fileName, contentType, content);
     }
 
     public async Task<AttendanceBackofficeDayDetailDto> GetBackofficeDayDetailAsync(
@@ -178,5 +220,11 @@ public sealed class AttendanceApiClient
             ?? $"O pedido de assiduidade falhou com o estado {(int)response.StatusCode}.";
 
         return new AttendanceApiException(response.StatusCode, message);
+    }
+
+    private static string? GetFileName(ContentDispositionHeaderValue? contentDisposition)
+    {
+        return contentDisposition?.FileNameStar
+            ?? contentDisposition?.FileName?.Trim('"');
     }
 }

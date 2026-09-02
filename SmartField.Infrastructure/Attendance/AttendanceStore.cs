@@ -211,6 +211,51 @@ public sealed class AttendanceStore : IAttendanceStore
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<AttendanceReferenceLookup>> GetWorkSiteReferencesAsync(
+        Guid companyId,
+        IReadOnlyCollection<Guid> workSiteIds,
+        CancellationToken cancellationToken)
+    {
+        if (workSiteIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await dbContext.WorkSites
+            .AsNoTracking()
+            .Where(workSite =>
+                workSite.CompanyId == companyId
+                && workSiteIds.Contains(workSite.Id))
+            .OrderBy(workSite => workSite.Name)
+            .ThenBy(workSite => workSite.Code)
+            .Select(workSite => new AttendanceReferenceLookup(
+                workSite.Id,
+                workSite.Code + " - " + workSite.Name))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AttendanceReferenceLookup>> GetProjectReferencesAsync(
+        Guid companyId,
+        IReadOnlyCollection<Guid> projectIds,
+        CancellationToken cancellationToken)
+    {
+        if (projectIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await dbContext.Projects
+            .AsNoTracking()
+            .Where(project =>
+                project.CompanyId == companyId
+                && projectIds.Contains(project.Id))
+            .OrderBy(project => project.Code)
+            .Select(project => new AttendanceReferenceLookup(
+                project.Id,
+                project.Code))
+            .ToListAsync(cancellationToken);
+    }
+
     internal IQueryable<AttendanceEventCorrectionReference> BuildCorrectionsForEventsQuery(
         Guid companyId,
         IReadOnlyCollection<Guid> attendanceEventIds)

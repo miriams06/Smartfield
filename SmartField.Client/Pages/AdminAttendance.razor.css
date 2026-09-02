@@ -21,7 +21,7 @@
 
 .admin-attendance-toolbar {
     display: grid;
-    grid-template-columns: minmax(10rem, 0.8fr) minmax(12rem, 1fr) minmax(12rem, 1fr) auto;
+    grid-template-columns: repeat(3, minmax(9rem, 0.75fr)) repeat(2, minmax(12rem, 1fr)) auto;
     gap: 0.85rem;
     align-items: end;
     padding: 1rem;

@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartField.Api.Authentication;
@@ -87,6 +88,36 @@ public sealed class AttendanceController : ControllerBase
         }
 
         return Ok(result.Value);
+    }
+
+    [HttpGet("admin/export.csv")]
+    [Authorize(Policy = SmartFieldPolicies.Backoffice)]
+    public async Task<IActionResult> ExportBackofficeCsv(
+        [FromQuery] DateOnly fromDate,
+        [FromQuery] DateOnly toDate,
+        [FromQuery] Guid? employeeId,
+        [FromQuery] Guid? workSiteId,
+        CancellationToken cancellationToken)
+    {
+        var result = await attendanceService.ExportBackofficeCsvAsync(
+            new AttendanceBackofficeExportFilter(
+                fromDate,
+                toDate,
+                employeeId,
+                workSiteId),
+            cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapFailure(result);
+        }
+
+        var preamble = Encoding.UTF8.GetPreamble();
+        var content = Encoding.UTF8.GetBytes(result.Value!.Content);
+        var bytes = new byte[preamble.Length + content.Length];
+        Buffer.BlockCopy(preamble, 0, bytes, 0, preamble.Length);
+        Buffer.BlockCopy(content, 0, bytes, preamble.Length, content.Length);
+
+        return File(bytes, result.Value.ContentType, result.Value.FileName);
     }
 
     [HttpGet("admin/day/{date}/employees/{employeeId}")]

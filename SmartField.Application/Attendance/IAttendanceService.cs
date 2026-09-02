@@ -19,6 +19,10 @@ public interface IAttendanceService
         AttendanceBackofficeDayFilter filter,
         CancellationToken cancellationToken);
 
+    Task<AttendanceResult<AttendanceBackofficeCsvExportDto>> ExportBackofficeCsvAsync(
+        AttendanceBackofficeExportFilter filter,
+        CancellationToken cancellationToken);
+
     Task<AttendanceResult<AttendanceBackofficeDayDetailDto>> GetBackofficeDayDetailAsync(
         Guid employeeId,
         DateOnly date,
