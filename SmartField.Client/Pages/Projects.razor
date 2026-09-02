@@ -1,0 +1,433 @@
+@page "/admin/projects"
+@attribute [Authorize(Roles = AuthConstants.BackofficeRoles)]
+@layout BackofficeLayout
+@using SmartField.Client.Projects
+@inject ProjectApiClient ProjectApiClient
+@inject WorkSiteApiClient WorkSiteApiClient
+
+<PageTitle>Projetos - SmartField Time</PageTitle>
+
+<section class="projects-page">
+    <header class="projects-header">
+        <div>
+            <p class="eyebrow">Backoffice</p>
+            <h1>Projetos</h1>
+            <p class="muted">Gerir a estrutura inicial de obras, intervenções e centros de custo.</p>
+        </div>
+        <button class="btn btn-primary" type="button" @onclick="StartCreateAsync" disabled="@isBusy">
+            Novo projeto
+        </button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="project-message project-message-success" role="status">@successMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="project-message project-message-error" role="alert">@errorMessage</div>
+    }
+
+    <div class="projects-toolbar">
+        <label class="projects-search-label" for="project-search">Pesquisar</label>
+        <div class="projects-search">
+            <input id="project-search"
+                   class="form-control"
+                   placeholder="Código, nome, cliente ou código ERP"
+                   @bind="searchText"
+                   @bind:event="oninput"
+                   @onkeydown="HandleSearchKeyDownAsync" />
+            <button class="btn btn-primary" type="button" @onclick="SearchAsync" disabled="@isBusy">
+                Pesquisar
+            </button>
+            <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearchAsync" disabled="@isBusy">
+                Limpar
+            </button>
+        </div>
+    </div>
+
+    <div class="projects-layout @(isEditing ? "has-editor" : string.Empty)">
+        <div class="projects-list-panel">
+            @if (isLoading)
+            {
+                <p class="muted">A carregar projetos...</p>
+            }
+            else if (projects.Count == 0)
+            {
+                <div class="empty-state">
+                    <h2>Sem projetos</h2>
+                    <p>Não foram encontrados projetos para os critérios indicados.</p>
+                </div>
+            }
+            else
+            {
+                <div class="projects-table-wrapper">
+                    <table class="projects-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Nome</th>
+                                <th>Cliente</th>
+                                <th>Local</th>
+                                <th>Tipo</th>
+                                <th>Estado</th>
+                                <th>ERP</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var project in projects)
+                            {
+                                <tr>
+                                    <td>@project.Code</td>
+                                    <td>@project.Name</td>
+                                    <td>@(project.CustomerName ?? "—")</td>
+                                    <td>@(project.WorkSiteName ?? "—")</td>
+                                    <td>@FormatProjectType(project.ProjectType)</td>
+                                    <td>
+                                        <span class="status-badge @GetStatusClass(project.Status)">
+                                            @FormatStatus(project.Status)
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span>@(project.ErpProjectCode ?? "—")</span>
+                                        <small>@(project.ErpCostCenterCode ?? "—")</small>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                type="button"
+                                                @onclick="() => EditAsync(project.Id)"
+                                                disabled="@isBusy">
+                                            Editar
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        @if (isEditing)
+        {
+            <aside class="project-editor" aria-label="Editor de projeto">
+                <div class="project-editor-header">
+                    <div>
+                        <p class="eyebrow">@(editor.Id.HasValue ? "Editar" : "Criar")</p>
+                        <h2>@(editor.Id.HasValue ? editor.Name : "Novo projeto")</h2>
+                    </div>
+                    <button class="btn-close"
+                            type="button"
+                            aria-label="Fechar"
+                            @onclick="CancelEdit"
+                            disabled="@isSaving"></button>
+                </div>
+
+                <EditForm Model="@editor" OnValidSubmit="SaveAsync">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+
+                    <div class="project-form-grid">
+                        <label>
+                            Código
+                            <InputText class="form-control" @bind-Value="editor.Code" />
+                            <ValidationMessage For="@(() => editor.Code)" />
+                        </label>
+
+                        <label>
+                            Nome
+                            <InputText class="form-control" @bind-Value="editor.Name" />
+                            <ValidationMessage For="@(() => editor.Name)" />
+                        </label>
+
+                        <label>
+                            Tipo
+                            <InputSelect class="form-control" @bind-Value="editor.ProjectType">
+                                <option value="Construction">Construção</option>
+                                <option value="Maintenance">Manutenção</option>
+                                <option value="Intervention">Intervenção</option>
+                                <option value="Internal">Interno</option>
+                                <option value="Other">Outro</option>
+                            </InputSelect>
+                        </label>
+
+                        <label>
+                            Estado
+                            <InputSelect class="form-control" @bind-Value="editor.Status">
+                                <option value="Draft">Rascunho</option>
+                                <option value="Active">Ativo</option>
+                                <option value="Closed">Fechado</option>
+                                <option value="Cancelled">Cancelado</option>
+                            </InputSelect>
+                        </label>
+
+                        <label>
+                            Cliente <span class="optional-field">(opcional)</span>
+                            <InputText class="form-control" @bind-Value="editor.CustomerName" />
+                            <ValidationMessage For="@(() => editor.CustomerName)" />
+                        </label>
+
+                        <label>
+                            Local de trabalho <span class="optional-field">(opcional)</span>
+                            <InputSelect class="form-control" TValue="Guid?" @bind-Value="editor.WorkSiteId">
+                                <option value="">Sem local associado</option>
+                                @foreach (var workSite in workSites)
+                                {
+                                    <option value="@workSite.Id">@FormatWorkSite(workSite)</option>
+                                }
+                            </InputSelect>
+                        </label>
+
+                        <label>
+                            Data de início <span class="optional-field">(opcional)</span>
+                            <InputDate class="form-control" @bind-Value="editor.StartDate" />
+                        </label>
+
+                        <label>
+                            Data de fim <span class="optional-field">(opcional)</span>
+                            <InputDate class="form-control" @bind-Value="editor.EndDate" />
+                        </label>
+
+                        <label>
+                            ERP Project Code <span class="optional-field">(opcional)</span>
+                            <InputText class="form-control" @bind-Value="editor.ErpProjectCode" />
+                            <ValidationMessage For="@(() => editor.ErpProjectCode)" />
+                        </label>
+
+                        <label>
+                            ERP Cost Center Code <span class="optional-field">(opcional)</span>
+                            <InputText class="form-control" @bind-Value="editor.ErpCostCenterCode" />
+                            <ValidationMessage For="@(() => editor.ErpCostCenterCode)" />
+                        </label>
+                    </div>
+
+                    <div class="project-form-actions">
+                        <button class="btn btn-outline-secondary" type="button" @onclick="CancelEdit" disabled="@isSaving">
+                            Cancelar
+                        </button>
+                        <button class="btn btn-primary" type="submit" disabled="@isSaving">
+                            @(isSaving ? "A guardar..." : "Guardar")
+                        </button>
+                    </div>
+                </EditForm>
+            </aside>
+        }
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<ProjectDto> projects = [];
+    private IReadOnlyList<WorkSiteDto> workSites = [];
+    private ProjectEditorModel editor = new();
+    private string? searchText;
+    private string? successMessage;
+    private string? errorMessage;
+    private bool isLoading;
+    private bool isSaving;
+    private bool isEditing;
+    private bool isBusy => isLoading || isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProjectsAsync();
+    }
+
+    private async Task LoadProjectsAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            projects = await ProjectApiClient.SearchAsync(
+                searchText,
+                CancellationToken.None);
+        }
+        catch (ProjectApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        successMessage = null;
+        await LoadProjectsAsync();
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        searchText = null;
+        successMessage = null;
+        await LoadProjectsAsync();
+    }
+
+    private async Task HandleSearchKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !isBusy)
+        {
+            await SearchAsync();
+        }
+    }
+
+    private async Task StartCreateAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            workSites = await WorkSiteApiClient.SearchAsync(null, CancellationToken.None);
+            editor = new ProjectEditorModel();
+            isEditing = true;
+        }
+        catch (WorkSiteApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task EditAsync(Guid projectId)
+    {
+        isLoading = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var projectTask = ProjectApiClient.GetAsync(projectId, CancellationToken.None);
+            var workSitesTask = WorkSiteApiClient.SearchAsync(null, CancellationToken.None);
+
+            await Task.WhenAll(projectTask, workSitesTask);
+
+            editor = new ProjectEditorModel();
+            editor.Load(await projectTask);
+            workSites = await workSitesTask;
+            isEditing = true;
+        }
+        catch (Exception exception)
+            when (exception is ProjectApiException or WorkSiteApiException)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        isSaving = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            if (editor.Id.HasValue)
+            {
+                await ProjectApiClient.UpdateAsync(
+                    editor.Id.Value,
+                    editor.ToUpdateRequest(),
+                    CancellationToken.None);
+                successMessage = "Projeto atualizado com sucesso.";
+            }
+            else
+            {
+                await ProjectApiClient.CreateAsync(
+                    editor.ToCreateRequest(),
+                    CancellationToken.None);
+                successMessage = "Projeto criado com sucesso.";
+            }
+
+            isEditing = false;
+            await LoadProjectsAsync();
+        }
+        catch (ProjectApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void CancelEdit()
+    {
+        isEditing = false;
+        editor = new ProjectEditorModel();
+        errorMessage = null;
+    }
+
+    private static string FormatWorkSite(WorkSiteDto workSite)
+    {
+        var state = workSite.IsActive ? string.Empty : " (inativo)";
+        return $"{workSite.Code} — {workSite.Name}{state}";
+    }
+
+    private static string FormatProjectType(string value)
+    {
+        return value switch
+        {
+            "Construction" => "Construção",
+            "Maintenance" => "Manutenção",
+            "Intervention" => "Intervenção",
+            "Internal" => "Interno",
+            _ => "Outro"
+        };
+    }
+
+    private static string FormatStatus(string value)
+    {
+        return value switch
+        {
+            "Active" => "Ativo",
+            "Closed" => "Fechado",
+            "Cancelled" => "Cancelado",
+            _ => "Rascunho"
+        };
+    }
+
+    private static string GetStatusClass(string value)
+    {
+        return value switch
+        {
+            "Active" => "is-active",
+            "Closed" => "is-closed",
+            "Cancelled" => "is-inactive",
+            _ => "is-draft"
+        };
+    }
+}

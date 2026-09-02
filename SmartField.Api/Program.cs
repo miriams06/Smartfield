@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Serilog;
 using Serilog.Events;
 using SmartField.Api.Authentication;
@@ -145,7 +146,26 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapHealthChecks("/health");
+app.MapGet("/health", async (
+    HealthCheckService healthCheckService,
+    CancellationToken cancellationToken) =>
+{
+    var report = await healthCheckService.CheckHealthAsync(cancellationToken);
+    var statusCode = report.Status == HealthStatus.Healthy
+        ? StatusCodes.Status200OK
+        : StatusCodes.Status503ServiceUnavailable;
+
+    return Results.Text(
+        report.Status.ToString(),
+        "text/plain",
+        statusCode: statusCode);
+})
+    .AllowAnonymous()
+    .WithName("Health")
+    .WithSummary("Estado da API SmartField")
+    .WithDescription("Executa os health checks configurados, incluindo SQL Server.")
+    .Produces<string>(StatusCodes.Status200OK, "text/plain")
+    .Produces<string>(StatusCodes.Status503ServiceUnavailable, "text/plain");
 app.MapControllers();
 
 app.Run();

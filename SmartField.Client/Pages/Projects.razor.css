@@ -1,0 +1,181 @@
+.projects-page {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.projects-header,
+.project-editor-header,
+.projects-search,
+.project-form-actions {
+    display: flex;
+    align-items: center;
+}
+
+.projects-header,
+.project-editor-header {
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.projects-toolbar,
+.projects-list-panel,
+.project-editor {
+    padding: 1rem;
+    border: 1px solid #d7dee8;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.projects-search-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-weight: 700;
+}
+
+.projects-search {
+    gap: 0.75rem;
+}
+
+.projects-search .form-control {
+    flex: 1;
+}
+
+.projects-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+}
+
+.projects-list-panel,
+.project-editor {
+    min-width: 0;
+}
+
+.projects-table-wrapper {
+    overflow-x: auto;
+}
+
+.projects-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.projects-table th,
+.projects-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e4e9f0;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.projects-table th {
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.projects-table td small,
+.projects-table td span {
+    display: block;
+}
+
+.projects-table td small {
+    margin-top: 0.2rem;
+    color: #64748b;
+}
+
+.status-badge {
+    display: inline-flex;
+    width: fit-content;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.status-badge.is-active {
+    color: #176b57;
+    background: #def7ec;
+}
+
+.status-badge.is-closed {
+    color: #334155;
+    background: #e2e8f0;
+}
+
+.status-badge.is-draft {
+    color: #7c2d12;
+    background: #ffedd5;
+}
+
+.status-badge.is-inactive {
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+.project-message {
+    padding: 0.85rem 1rem;
+    border-radius: 8px;
+}
+
+.project-message-success {
+    color: #176b57;
+    background: #def7ec;
+}
+
+.project-message-error {
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+.project-editor {
+    box-shadow: 0 16px 38px rgba(31, 41, 51, 0.08);
+}
+
+.project-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.project-form-grid label {
+    display: grid;
+    gap: 0.35rem;
+    font-weight: 700;
+}
+
+.optional-field {
+    color: #64748b;
+    font-weight: 500;
+}
+
+.project-form-actions {
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+@media (min-width: 1180px) {
+    .projects-layout.has-editor {
+        grid-template-columns: minmax(0, 1.6fr) minmax(22rem, 0.9fr);
+        align-items: start;
+    }
+
+    .project-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 760px) {
+    .projects-header,
+    .projects-search,
+    .project-form-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .project-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
