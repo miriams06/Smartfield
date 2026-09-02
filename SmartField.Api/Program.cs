@@ -5,6 +5,7 @@ using SmartField.Api.Authentication;
 using SmartField.Api.HealthChecks;
 using SmartField.Application.Abstractions;
 using SmartField.Application.Attendance;
+using SmartField.Application.Audit;
 using SmartField.Application.Employees;
 using SmartField.Application.Geolocation;
 using SmartField.Application.IntegrationOutbox;
@@ -50,6 +51,7 @@ builder.Services.AddScoped<IEmployeeIntegrationService, PrimaveraEmployeeIntegra
 builder.Services.AddScoped<IAttendanceIntegrationService, PrimaveraAttendanceIntegrationService>();
 builder.Services.AddScoped<IProjectIntegrationService, PrimaveraProjectIntegrationService>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IGeolocationService, GeolocationService>();
 builder.Services.AddScoped<IIntegrationOutboxService, IntegrationOutboxService>();
