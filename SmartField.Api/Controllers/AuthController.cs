@@ -1,8 +1,10 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using SmartField.Api.Authentication;
+using SmartField.Application.Audit;
 using SmartField.Infrastructure.Identity;
 
 namespace SmartField.Api.Controllers;
@@ -13,13 +15,19 @@ public class AuthController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> userManager;
     private readonly IJwtTokenService jwtTokenService;
+    private readonly IAuditService auditService;
+    private readonly TimeProvider timeProvider;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
-        IJwtTokenService jwtTokenService)
+        IJwtTokenService jwtTokenService,
+        IAuditService auditService,
+        TimeProvider timeProvider)
     {
         this.userManager = userManager;
         this.jwtTokenService = jwtTokenService;
+        this.auditService = auditService;
+        this.timeProvider = timeProvider;
     }
 
     [HttpPost("login")]
@@ -44,6 +52,25 @@ public class AuthController : ControllerBase
 
         var roles = (await userManager.GetRolesAsync(user)).ToArray();
         var token = jwtTokenService.CreateToken(user, roles);
+
+        if (roles.Contains(SmartFieldRoles.Admin, StringComparer.Ordinal)
+            || roles.Contains(SmartFieldRoles.Manager, StringComparer.Ordinal))
+        {
+            auditService.Add(
+                user.CompanyId,
+                user.Id,
+                "User",
+                user.Id,
+                "AdministrativeLogin",
+                null,
+                JsonSerializer.Serialize(new
+                {
+                    Email = user.Email,
+                    Roles = roles
+                }),
+                timeProvider.GetUtcNow());
+            await auditService.SaveChangesAsync(cancellationToken);
+        }
 
         return Ok(new LoginResponse(
             token.AccessToken,
