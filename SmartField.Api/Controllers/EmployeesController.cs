@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartField.Api.Authentication;
+using SmartField.Application.Audit;
 using SmartField.Application.Employees;
 
 namespace SmartField.Api.Controllers;
@@ -11,10 +13,17 @@ namespace SmartField.Api.Controllers;
 public sealed class EmployeesController : ControllerBase
 {
     private readonly IEmployeeService employeeService;
+    private readonly IAuditService auditService;
+    private readonly TimeProvider timeProvider;
 
-    public EmployeesController(IEmployeeService employeeService)
+    public EmployeesController(
+        IEmployeeService employeeService,
+        IAuditService auditService,
+        TimeProvider timeProvider)
     {
         this.employeeService = employeeService;
+        this.auditService = auditService;
+        this.timeProvider = timeProvider;
     }
 
     [HttpGet]
@@ -73,10 +82,18 @@ public sealed class EmployeesController : ControllerBase
             return MapFailure(result);
         }
 
+        var created = result.Value!;
+        await AddAuditAsync(
+            created.Id,
+            "Created",
+            null,
+            JsonSerializer.Serialize(created),
+            cancellationToken);
+
         return CreatedAtAction(
             nameof(GetById),
-            new { id = result.Value!.Id },
-            result.Value);
+            new { id = created.Id },
+            created);
     }
 
     [HttpPut("{id:guid}")]
@@ -85,6 +102,7 @@ public sealed class EmployeesController : ControllerBase
         UpdateEmployeeRequest request,
         CancellationToken cancellationToken)
     {
+        var beforeResult = await employeeService.GetAsync(id, cancellationToken);
         var result = await employeeService.UpdateAsync(
             id,
             request,
@@ -95,7 +113,33 @@ public sealed class EmployeesController : ControllerBase
             return MapFailure(result);
         }
 
+        await AddAuditAsync(
+            id,
+            "Updated",
+            beforeResult.IsSuccess ? JsonSerializer.Serialize(beforeResult.Value) : null,
+            JsonSerializer.Serialize(result.Value),
+            cancellationToken);
+
         return Ok(result.Value);
+    }
+
+    private async Task AddAuditAsync(
+        Guid entityId,
+        string action,
+        string? oldValues,
+        string? newValues,
+        CancellationToken cancellationToken)
+    {
+        auditService.Add(
+            User.GetRequiredCompanyId(),
+            User.GetRequiredUserId(),
+            nameof(EmployeeDto).Replace("Dto", string.Empty, StringComparison.Ordinal),
+            entityId,
+            action,
+            oldValues,
+            newValues,
+            timeProvider.GetUtcNow());
+        await auditService.SaveChangesAsync(cancellationToken);
     }
 
     private ActionResult MapFailure<T>(EmployeeResult<T> result)
