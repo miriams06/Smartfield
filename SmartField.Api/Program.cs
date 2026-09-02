@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using Serilog.Events;
 using SmartField.Api.Authentication;
 using SmartField.Api.HealthChecks;
+using SmartField.Api.Middleware;
 using SmartField.Application.Abstractions;
 using SmartField.Application.Attendance;
 using SmartField.Application.Audit;
@@ -20,6 +23,21 @@ var jwtSigningKey = JwtSigningKey.Create(builder.Configuration, builder.Environm
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>() ?? [];
+
+builder.Host.UseSerilog((_, loggerConfiguration) =>
+{
+    loggerConfiguration
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+        .Enrich.FromLogContext()
+        .WriteTo.Console()
+        .WriteTo.File(
+            "logs/smartfield-.log",
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 14,
+            shared: true);
+});
 
 // Add services to the container.
 
@@ -108,6 +126,18 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        diagnosticContext.Set(
+            "CorrelationId",
+            CorrelationIdMiddleware.GetCorrelationId(httpContext));
+    };
+});
 
 app.UseHttpsRedirection();
 

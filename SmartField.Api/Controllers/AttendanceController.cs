@@ -12,10 +12,14 @@ namespace SmartField.Api.Controllers;
 public sealed class AttendanceController : ControllerBase
 {
     private readonly IAttendanceService attendanceService;
+    private readonly ILogger<AttendanceController> logger;
 
-    public AttendanceController(IAttendanceService attendanceService)
+    public AttendanceController(
+        IAttendanceService attendanceService,
+        ILogger<AttendanceController> logger)
     {
         this.attendanceService = attendanceService;
+        this.logger = logger;
     }
 
     [HttpGet("state")]
@@ -175,6 +179,11 @@ public sealed class AttendanceController : ControllerBase
     private ActionResult MapFailure<T>(AttendanceResult<T> result)
         where T : class
     {
+        logger.LogWarning(
+            "Attendance request failed with {AttendanceError}. Detail: {AttendanceFailureDetail}",
+            result.Error,
+            result.Detail);
+
         return result.Error switch
         {
             AttendanceError.CompanyUnavailable

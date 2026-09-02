@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SmartField.Integrations.Primavera;
 
 namespace SmartField.Integrations.Primavera.Tests;
@@ -53,4 +54,64 @@ public class NotConfiguredPrimaveraClientTests
         Assert.Equal("NotConfigured", result.Status);
         Assert.Null(result.ExternalDocumentId);
     }
+
+    [Fact]
+    public async Task SendAttendanceAsync_LogsFutureIntegrationAttempt()
+    {
+        var logger = new ListLogger<NotConfiguredPrimaveraClient>();
+        var client = new NotConfiguredPrimaveraClient(logger);
+
+        await client.SendAttendanceAsync(
+            new PrimaveraAttendanceDto(
+                Guid.NewGuid(),
+                "FUNC001",
+                "ClockIn",
+                new DateTimeOffset(2026, 9, 2, 8, 30, 0, TimeSpan.Zero),
+                "OBR-001",
+                "SEDE",
+                38.722252m,
+                -9.139337m),
+            CancellationToken.None);
+
+        var log = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Information, log.Level);
+        Assert.Contains(nameof(NotConfiguredPrimaveraClient.SendAttendanceAsync), log.Message);
+    }
+
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        public List<LogEntry> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull
+        {
+            return NullScope.Instance;
+        }
+
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return true;
+        }
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add(new LogEntry(logLevel, formatter(state, exception)));
+        }
+    }
+
+    private sealed class NullScope : IDisposable
+    {
+        public static readonly NullScope Instance = new();
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed record LogEntry(LogLevel Level, string Message);
 }
