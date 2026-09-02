@@ -70,6 +70,23 @@ public class AttendanceControllerTests
     }
 
     [Fact]
+    public void Controller_ExposesBackofficeCsvExportRouteForBackofficePolicy()
+    {
+        var method = typeof(AttendanceController)
+            .GetMethod(nameof(AttendanceController.ExportBackofficeCsv));
+        var routeAttribute = method?
+            .GetCustomAttributes(typeof(HttpGetAttribute), inherit: false)
+            .OfType<HttpMethodAttribute>()
+            .SingleOrDefault();
+        var authorizeAttribute = method?
+            .GetCustomAttribute<AuthorizeAttribute>();
+
+        Assert.NotNull(routeAttribute);
+        Assert.Equal("admin/export.csv", routeAttribute.Template);
+        Assert.Equal(SmartFieldPolicies.Backoffice, authorizeAttribute?.Policy);
+    }
+
+    [Fact]
     public void Controller_ExposesBackofficeDayDetailRouteForBackofficePolicy()
     {
         var method = typeof(AttendanceController)
