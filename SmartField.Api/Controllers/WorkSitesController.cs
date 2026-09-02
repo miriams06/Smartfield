@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartField.Api.Authentication;
+using SmartField.Application.Audit;
 using SmartField.Application.WorkSites;
 
 namespace SmartField.Api.Controllers;
@@ -11,10 +13,17 @@ namespace SmartField.Api.Controllers;
 public sealed class WorkSitesController : ControllerBase
 {
     private readonly IWorkSiteService workSiteService;
+    private readonly IAuditService auditService;
+    private readonly TimeProvider timeProvider;
 
-    public WorkSitesController(IWorkSiteService workSiteService)
+    public WorkSitesController(
+        IWorkSiteService workSiteService,
+        IAuditService auditService,
+        TimeProvider timeProvider)
     {
         this.workSiteService = workSiteService;
+        this.auditService = auditService;
+        this.timeProvider = timeProvider;
     }
 
     [HttpGet]
@@ -56,10 +65,13 @@ public sealed class WorkSitesController : ControllerBase
             return MapFailure(result);
         }
 
+        var created = result.Value!;
+        await AddAuditAsync(created.Id, "Created", null, JsonSerializer.Serialize(created), cancellationToken);
+
         return CreatedAtAction(
             nameof(GetById),
-            new { id = result.Value!.Id },
-            result.Value);
+            new { id = created.Id },
+            created);
     }
 
     [HttpPut("{id:guid}")]
@@ -68,6 +80,7 @@ public sealed class WorkSitesController : ControllerBase
         UpdateWorkSiteRequest request,
         CancellationToken cancellationToken)
     {
+        var beforeResult = await workSiteService.GetAsync(id, cancellationToken);
         var result = await workSiteService.UpdateAsync(
             id,
             request,
@@ -78,7 +91,33 @@ public sealed class WorkSitesController : ControllerBase
             return MapFailure(result);
         }
 
+        await AddAuditAsync(
+            id,
+            "Updated",
+            beforeResult.IsSuccess ? JsonSerializer.Serialize(beforeResult.Value) : null,
+            JsonSerializer.Serialize(result.Value),
+            cancellationToken);
+
         return Ok(result.Value);
+    }
+
+    private async Task AddAuditAsync(
+        Guid entityId,
+        string action,
+        string? oldValues,
+        string? newValues,
+        CancellationToken cancellationToken)
+    {
+        auditService.Add(
+            User.GetRequiredCompanyId(),
+            User.GetRequiredUserId(),
+            "WorkSite",
+            entityId,
+            action,
+            oldValues,
+            newValues,
+            timeProvider.GetUtcNow());
+        await auditService.SaveChangesAsync(cancellationToken);
     }
 
     private ActionResult MapFailure<T>(WorkSiteResult<T> result)
