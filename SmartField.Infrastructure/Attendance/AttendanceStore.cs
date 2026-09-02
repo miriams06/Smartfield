@@ -282,11 +282,6 @@ public sealed class AttendanceStore : IAttendanceStore
         dbContext.AuditLogs.Add(auditLog);
     }
 
-    public void Add(IntegrationOutbox integrationOutbox)
-    {
-        dbContext.IntegrationOutbox.Add(integrationOutbox);
-    }
-
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try

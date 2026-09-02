@@ -4,11 +4,13 @@ using Microsoft.Extensions.DependencyInjection;
 using SmartField.Application.Attendance;
 using SmartField.Application.Employees;
 using SmartField.Application.Geolocation;
+using SmartField.Application.IntegrationOutbox;
 using SmartField.Application.Projects;
 using SmartField.Application.WorkSites;
 using SmartField.Infrastructure.Attendance;
 using SmartField.Infrastructure.Employees;
 using SmartField.Infrastructure.Geolocation;
+using SmartField.Infrastructure.Outbox;
 using SmartField.Infrastructure.Projects;
 using SmartField.Infrastructure.WorkSites;
 
@@ -27,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<IAttendanceStore, AttendanceStore>();
         services.AddScoped<IEmployeeStore, EmployeeStore>();
         services.AddScoped<IGeolocationStore, GeolocationStore>();
+        services.AddScoped<IIntegrationOutboxStore, IntegrationOutboxStore>();
         services.AddScoped<IProjectStore, ProjectStore>();
         services.AddScoped<IWorkSiteStore, WorkSiteStore>();
 

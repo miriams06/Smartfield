@@ -69,7 +69,5 @@ public interface IAttendanceStore
 
     void Add(AuditLog auditLog);
 
-    void Add(IntegrationOutbox integrationOutbox);
-
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

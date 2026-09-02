@@ -1,4 +1,6 @@
+using System.Text.Json;
 using SmartField.Application.Abstractions;
+using SmartField.Application.IntegrationOutbox;
 using SmartField.Domain.Entities;
 using SmartField.Domain.Enums;
 
@@ -15,15 +17,18 @@ public sealed class ProjectService : IProjectService
 
     private readonly IProjectStore projectStore;
     private readonly ICurrentCompanyProvider currentCompanyProvider;
+    private readonly IIntegrationOutboxService integrationOutboxService;
     private readonly TimeProvider timeProvider;
 
     public ProjectService(
         IProjectStore projectStore,
         ICurrentCompanyProvider currentCompanyProvider,
+        IIntegrationOutboxService integrationOutboxService,
         TimeProvider timeProvider)
     {
         this.projectStore = projectStore;
         this.currentCompanyProvider = currentCompanyProvider;
+        this.integrationOutboxService = integrationOutboxService;
         this.timeProvider = timeProvider;
     }
 
@@ -135,6 +140,13 @@ public sealed class ProjectService : IProjectService
         };
 
         projectStore.Add(project);
+        integrationOutboxService.Add(new IntegrationOutboxMessage(
+            companyId.Value,
+            IntegrationOutboxEventTypes.ProjectCreated,
+            nameof(Project),
+            project.Id,
+            SerializeProject(project),
+            project.CreatedAtUtc));
 
         try
         {
@@ -408,6 +420,27 @@ public sealed class ProjectService : IProjectService
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string SerializeProject(Project project)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            project.Id,
+            project.CompanyId,
+            project.Code,
+            project.Name,
+            ProjectType = project.ProjectType.ToString(),
+            Status = project.Status.ToString(),
+            project.CustomerName,
+            project.WorkSiteId,
+            project.StartDate,
+            project.EndDate,
+            project.ErpProjectCode,
+            project.ErpCostCenterCode,
+            project.CreatedAtUtc,
+            project.UpdatedAtUtc
+        });
     }
 
     private sealed record ProjectValidationResult(

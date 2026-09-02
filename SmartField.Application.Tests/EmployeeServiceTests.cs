@@ -1,6 +1,8 @@
 using SmartField.Application.Abstractions;
 using SmartField.Application.Employees;
+using SmartField.Application.IntegrationOutbox;
 using SmartField.Domain.Entities;
+using DomainIntegrationOutbox = SmartField.Domain.Entities.IntegrationOutbox;
 
 namespace SmartField.Application.Tests;
 
@@ -53,6 +55,11 @@ public class EmployeeServiceTests
         Assert.Equal(workSiteId, addedEmployee.DefaultWorkSiteId);
         Assert.Equal(userId, repository.AssociatedUserId);
         Assert.Equal(Now, addedEmployee.CreatedAtUtc);
+        var outbox = Assert.Single(repository.OutboxItems);
+        Assert.Equal("EmployeeCreated", outbox.EventType);
+        Assert.Equal("Employee", outbox.EntityType);
+        Assert.Equal(addedEmployee.Id, outbox.EntityId);
+        Assert.Contains(addedEmployee.EmployeeNumber, outbox.Payload);
     }
 
     [Fact]
@@ -182,6 +189,10 @@ public class EmployeeServiceTests
         Assert.Equal("ERP-27", existingEmployee.ErpEmployeeCode);
         Assert.Equal(Now, existingEmployee.UpdatedAtUtc);
         Assert.Equal(userId, store.AssociatedUserId);
+        var outbox = Assert.Single(store.OutboxItems);
+        Assert.Equal("EmployeeUpdated", outbox.EventType);
+        Assert.Equal(existingEmployee.Id, outbox.EntityId);
+        Assert.Contains("Maria Atualizada", outbox.Payload);
         Assert.Equal(1, store.SaveCount);
     }
 
@@ -210,6 +221,7 @@ public class EmployeeServiceTests
         var service = new EmployeeService(
             repository,
             new FakeCurrentCompanyProvider(null),
+            new IntegrationOutboxService(repository),
             new FixedTimeProvider(Now));
 
         var result = await service.CreateAsync(
@@ -242,6 +254,7 @@ public class EmployeeServiceTests
         return new EmployeeService(
             repository,
             new FakeCurrentCompanyProvider(CompanyId),
+            new IntegrationOutboxService(repository),
             new FixedTimeProvider(Now));
     }
 
@@ -293,7 +306,7 @@ public class EmployeeServiceTests
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
-    private sealed class FakeEmployeeStore : IEmployeeStore
+    private sealed class FakeEmployeeStore : IEmployeeStore, IIntegrationOutboxStore
     {
         public bool EmployeeNumberExists { get; set; }
 
@@ -309,6 +322,8 @@ public class EmployeeServiceTests
         public string? LastSearch { get; private set; }
 
         public Employee? AddedEmployee { get; private set; }
+
+        public List<DomainIntegrationOutbox> OutboxItems { get; } = [];
 
         public Guid? AssociatedUserId { get; private set; }
 
@@ -388,6 +403,11 @@ public class EmployeeServiceTests
         public void Add(Employee employee)
         {
             AddedEmployee = employee;
+        }
+
+        public void Add(DomainIntegrationOutbox integrationOutbox)
+        {
+            OutboxItems.Add(integrationOutbox);
         }
 
         public Task SaveChangesAsync(CancellationToken cancellationToken)

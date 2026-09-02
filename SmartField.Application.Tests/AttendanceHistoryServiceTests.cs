@@ -1,8 +1,10 @@
 using SmartField.Application.Abstractions;
 using SmartField.Application.Attendance;
 using SmartField.Application.Geolocation;
+using SmartField.Application.IntegrationOutbox;
 using SmartField.Domain.Entities;
 using SmartField.Domain.Enums;
+using DomainIntegrationOutbox = SmartField.Domain.Entities.IntegrationOutbox;
 
 namespace SmartField.Application.Tests;
 
@@ -127,6 +129,7 @@ public class AttendanceHistoryServiceTests
             new FakeCurrentCompanyProvider(CompanyId),
             new FakeCurrentUserProvider(UserId, EmployeeId),
             new FakeGeolocationService(),
+            new IntegrationOutboxService(store),
             new FixedTimeProvider(Now));
     }
 
@@ -204,7 +207,7 @@ public class AttendanceHistoryServiceTests
         }
     }
 
-    private sealed class FakeAttendanceStore : IAttendanceStore
+    private sealed class FakeAttendanceStore : IAttendanceStore, IIntegrationOutboxStore
     {
         public List<AttendanceEvent> Events { get; } = [];
 
@@ -328,7 +331,7 @@ public class AttendanceHistoryServiceTests
         public void Add(AttendanceEvent attendanceEvent) => Events.Add(attendanceEvent);
         public void Add(AttendanceCorrection attendanceCorrection) { }
         public void Add(AuditLog auditLog) { }
-        public void Add(IntegrationOutbox integrationOutbox) { }
+        public void Add(DomainIntegrationOutbox integrationOutbox) { }
         public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

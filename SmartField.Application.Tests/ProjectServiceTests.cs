@@ -1,7 +1,9 @@
 using SmartField.Application.Abstractions;
+using SmartField.Application.IntegrationOutbox;
 using SmartField.Application.Projects;
 using SmartField.Domain.Entities;
 using SmartField.Domain.Enums;
+using DomainIntegrationOutbox = SmartField.Domain.Entities.IntegrationOutbox;
 
 namespace SmartField.Application.Tests;
 
@@ -59,6 +61,11 @@ public class ProjectServiceTests
         Assert.Equal("ERP-PRJ", addedProject.ErpProjectCode);
         Assert.Equal("CC-001", addedProject.ErpCostCenterCode);
         Assert.Equal(Now, addedProject.CreatedAtUtc);
+        var outbox = Assert.Single(store.OutboxItems);
+        Assert.Equal("ProjectCreated", outbox.EventType);
+        Assert.Equal("Project", outbox.EntityType);
+        Assert.Equal(addedProject.Id, outbox.EntityId);
+        Assert.Contains(addedProject.Code, outbox.Payload);
     }
 
     [Fact]
@@ -171,6 +178,7 @@ public class ProjectServiceTests
         var service = new ProjectService(
             store,
             new FakeCurrentCompanyProvider(null),
+            new IntegrationOutboxService(store),
             new FixedTimeProvider(Now));
 
         var result = await service.CreateAsync(
@@ -186,6 +194,7 @@ public class ProjectServiceTests
         return new ProjectService(
             store,
             new FakeCurrentCompanyProvider(CompanyId),
+            new IntegrationOutboxService(store),
             new FixedTimeProvider(Now));
     }
 
@@ -241,7 +250,7 @@ public class ProjectServiceTests
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
-    private sealed class FakeProjectStore : IProjectStore
+    private sealed class FakeProjectStore : IProjectStore, IIntegrationOutboxStore
     {
         public bool CodeExists { get; set; }
 
@@ -254,6 +263,8 @@ public class ProjectServiceTests
         public string? LastSearch { get; private set; }
 
         public Project? AddedProject { get; private set; }
+
+        public List<DomainIntegrationOutbox> OutboxItems { get; } = [];
 
         public int SaveCount { get; private set; }
 
@@ -308,6 +319,11 @@ public class ProjectServiceTests
         public void Add(Project project)
         {
             AddedProject = project;
+        }
+
+        public void Add(DomainIntegrationOutbox integrationOutbox)
+        {
+            OutboxItems.Add(integrationOutbox);
         }
 
         public Task SaveChangesAsync(CancellationToken cancellationToken)

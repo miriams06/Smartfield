@@ -1,8 +1,10 @@
 using SmartField.Application.Abstractions;
 using SmartField.Application.Attendance;
 using SmartField.Application.Geolocation;
+using SmartField.Application.IntegrationOutbox;
 using SmartField.Domain.Entities;
 using SmartField.Domain.Enums;
+using DomainIntegrationOutbox = SmartField.Domain.Entities.IntegrationOutbox;
 
 namespace SmartField.Application.Tests;
 
@@ -167,7 +169,7 @@ public class AttendanceServiceTests
 
         var outbox = Assert.Single(store.OutboxItems);
         Assert.Equal(attendanceEvent.Id, outbox.EntityId);
-        Assert.Equal("AttendanceEventCreated", outbox.EventType);
+        Assert.Equal("AttendanceCreated", outbox.EventType);
         Assert.Equal("AttendanceEvent", outbox.EntityType);
         Assert.Contains(attendanceEvent.ClientEventId.ToString(), outbox.Payload);
         Assert.Equal(1, store.SaveChangesCalls);
@@ -334,6 +336,7 @@ public class AttendanceServiceTests
             new FakeCurrentCompanyProvider(null),
             new FakeCurrentUserProvider(UserId, EmployeeId),
             new FakeGeolocationService(),
+            new IntegrationOutboxService(store),
             new FixedTimeProvider(ServerNow));
 
         var result = await service.PunchAsync(
@@ -353,6 +356,7 @@ public class AttendanceServiceTests
             new FakeCurrentCompanyProvider(CompanyId),
             new FakeCurrentUserProvider(UserId, null),
             new FakeGeolocationService(),
+            new IntegrationOutboxService(store),
             new FixedTimeProvider(ServerNow));
 
         var result = await service.PunchAsync(
@@ -372,6 +376,7 @@ public class AttendanceServiceTests
             new FakeCurrentCompanyProvider(CompanyId),
             new FakeCurrentUserProvider(UserId, EmployeeId),
             geolocation ?? new FakeGeolocationService(),
+            new IntegrationOutboxService(store),
             new FixedTimeProvider(ServerNow));
     }
 
@@ -460,7 +465,7 @@ public class AttendanceServiceTests
         }
     }
 
-    private sealed class FakeAttendanceStore : IAttendanceStore
+    private sealed class FakeAttendanceStore : IAttendanceStore, IIntegrationOutboxStore
     {
         private int getByClientEventCalls;
 
@@ -490,7 +495,7 @@ public class AttendanceServiceTests
 
         public List<AuditLog> AuditLogs { get; } = [];
 
-        public List<IntegrationOutbox> OutboxItems { get; } = [];
+        public List<DomainIntegrationOutbox> OutboxItems { get; } = [];
 
         public Task<bool> EmployeeCanPunchAsync(
             Guid companyId,
@@ -666,7 +671,7 @@ public class AttendanceServiceTests
             AuditLogs.Add(auditLog);
         }
 
-        public void Add(IntegrationOutbox integrationOutbox)
+        public void Add(DomainIntegrationOutbox integrationOutbox)
         {
             OutboxItems.Add(integrationOutbox);
         }

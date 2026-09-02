@@ -1,6 +1,7 @@
 using System.Text.Json;
 using SmartField.Application.Abstractions;
 using SmartField.Application.Geolocation;
+using SmartField.Application.IntegrationOutbox;
 using SmartField.Domain.Entities;
 using SmartField.Domain.Enums;
 
@@ -12,6 +13,7 @@ public sealed class AttendanceService : IAttendanceService
     private readonly ICurrentCompanyProvider currentCompanyProvider;
     private readonly ICurrentUserProvider currentUserProvider;
     private readonly IGeolocationService geolocationService;
+    private readonly IIntegrationOutboxService integrationOutboxService;
     private readonly TimeProvider timeProvider;
 
     public AttendanceService(
@@ -19,12 +21,14 @@ public sealed class AttendanceService : IAttendanceService
         ICurrentCompanyProvider currentCompanyProvider,
         ICurrentUserProvider currentUserProvider,
         IGeolocationService geolocationService,
+        IIntegrationOutboxService integrationOutboxService,
         TimeProvider timeProvider)
     {
         this.attendanceStore = attendanceStore;
         this.currentCompanyProvider = currentCompanyProvider;
         this.currentUserProvider = currentUserProvider;
         this.geolocationService = geolocationService;
+        this.integrationOutboxService = integrationOutboxService;
         this.timeProvider = timeProvider;
     }
 
@@ -471,6 +475,13 @@ public sealed class AttendanceService : IAttendanceService
             TimestampUtc = nowUtc,
             CreatedAtUtc = nowUtc
         });
+        integrationOutboxService.Add(new IntegrationOutboxMessage(
+            companyId.Value,
+            IntegrationOutboxEventTypes.AttendanceCorrected,
+            nameof(AttendanceCorrection),
+            correction.Id,
+            payload,
+            nowUtc));
 
         await attendanceStore.SaveChangesAsync(cancellationToken);
 
@@ -614,16 +625,13 @@ public sealed class AttendanceService : IAttendanceService
             TimestampUtc = serverTimestampUtc,
             CreatedAtUtc = serverTimestampUtc
         });
-        attendanceStore.Add(new IntegrationOutbox
-        {
-            Id = Guid.NewGuid(),
-            CompanyId = context.CompanyId,
-            EventType = "AttendanceEventCreated",
-            EntityType = nameof(AttendanceEvent),
-            EntityId = attendanceEvent.Id,
-            Payload = payload,
-            CreatedAtUtc = serverTimestampUtc
-        });
+        integrationOutboxService.Add(new IntegrationOutboxMessage(
+            context.CompanyId,
+            IntegrationOutboxEventTypes.AttendanceCreated,
+            nameof(AttendanceEvent),
+            attendanceEvent.Id,
+            payload,
+            serverTimestampUtc));
 
         try
         {

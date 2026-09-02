@@ -1,8 +1,10 @@
 using SmartField.Application.Abstractions;
 using SmartField.Application.Attendance;
 using SmartField.Application.Geolocation;
+using SmartField.Application.IntegrationOutbox;
 using SmartField.Domain.Entities;
 using SmartField.Domain.Enums;
+using DomainIntegrationOutbox = SmartField.Domain.Entities.IntegrationOutbox;
 
 namespace SmartField.Application.Tests;
 
@@ -153,6 +155,10 @@ public class AttendanceBackofficeServiceTests
         Assert.Equal("ClockIn", result.Value?.CorrectedEventType);
         Assert.Equal(UserId, result.Value?.CorrectedByUserId);
         Assert.Single(store.Corrections);
+        var outbox = Assert.Single(store.OutboxItems);
+        Assert.Equal("AttendanceCorrected", outbox.EventType);
+        Assert.Equal("AttendanceCorrection", outbox.EntityType);
+        Assert.Equal(result.Value?.Id, outbox.EntityId);
         var audit = Assert.Single(store.AuditLogs);
         Assert.Equal("AttendanceCorrection", audit.EntityType);
         Assert.Equal("Created", audit.Action);
@@ -222,6 +228,7 @@ public class AttendanceBackofficeServiceTests
             new FakeCurrentCompanyProvider(),
             new FakeCurrentUserProvider(),
             new FakeGeolocationService(),
+            new IntegrationOutboxService(store),
             new FixedTimeProvider());
     }
 
@@ -297,12 +304,13 @@ public class AttendanceBackofficeServiceTests
         }
     }
 
-    private sealed class FakeAttendanceStore : IAttendanceStore
+    private sealed class FakeAttendanceStore : IAttendanceStore, IIntegrationOutboxStore
     {
         public List<AttendanceBackofficeEmployeeReference> Employees { get; } = [];
         public List<AttendanceEvent> Events { get; } = [];
         public List<AttendanceEventCorrectionReference> Corrections { get; } = [];
         public List<AuditLog> AuditLogs { get; } = [];
+        public List<DomainIntegrationOutbox> OutboxItems { get; } = [];
         public int SaveChangesCalls { get; private set; }
 
         public Task<bool> EmployeeCanPunchAsync(
@@ -444,7 +452,7 @@ public class AttendanceBackofficeServiceTests
         }
 
         public void Add(AuditLog auditLog) => AuditLogs.Add(auditLog);
-        public void Add(IntegrationOutbox integrationOutbox) => throw new NotSupportedException();
+        public void Add(DomainIntegrationOutbox integrationOutbox) => OutboxItems.Add(integrationOutbox);
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
             SaveChangesCalls++;

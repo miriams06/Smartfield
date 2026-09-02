@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using SmartField.Application.Abstractions;
+using SmartField.Application.IntegrationOutbox;
 using SmartField.Domain.Entities;
 
 namespace SmartField.Application.Employees;
@@ -17,15 +19,18 @@ public sealed class EmployeeService : IEmployeeService
 
     private readonly IEmployeeStore employeeStore;
     private readonly ICurrentCompanyProvider currentCompanyProvider;
+    private readonly IIntegrationOutboxService integrationOutboxService;
     private readonly TimeProvider timeProvider;
 
     public EmployeeService(
         IEmployeeStore employeeStore,
         ICurrentCompanyProvider currentCompanyProvider,
+        IIntegrationOutboxService integrationOutboxService,
         TimeProvider timeProvider)
     {
         this.employeeStore = employeeStore;
         this.currentCompanyProvider = currentCompanyProvider;
+        this.integrationOutboxService = integrationOutboxService;
         this.timeProvider = timeProvider;
     }
 
@@ -178,6 +183,13 @@ public sealed class EmployeeService : IEmployeeService
         }
 
         employeeStore.Add(employee);
+        integrationOutboxService.Add(new IntegrationOutboxMessage(
+            companyId.Value,
+            IntegrationOutboxEventTypes.EmployeeCreated,
+            nameof(Employee),
+            employee.Id,
+            SerializeEmployee(employee),
+            employee.CreatedAtUtc));
 
         try
         {
@@ -276,6 +288,13 @@ public sealed class EmployeeService : IEmployeeService
         employee.DefaultWorkSiteId = validation.Input.DefaultWorkSiteId;
         employee.ErpEmployeeCode = validation.Input.ErpEmployeeCode;
         employee.UpdatedAtUtc = timeProvider.GetUtcNow();
+        integrationOutboxService.Add(new IntegrationOutboxMessage(
+            companyId.Value,
+            IntegrationOutboxEventTypes.EmployeeUpdated,
+            nameof(Employee),
+            employee.Id,
+            SerializeEmployee(employee),
+            employee.UpdatedAtUtc.Value));
 
         try
         {
@@ -435,6 +454,24 @@ public sealed class EmployeeService : IEmployeeService
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string SerializeEmployee(Employee employee)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            employee.Id,
+            employee.CompanyId,
+            employee.EmployeeNumber,
+            employee.Name,
+            employee.Email,
+            employee.MobilePhone,
+            employee.IsActive,
+            employee.DefaultWorkSiteId,
+            employee.ErpEmployeeCode,
+            employee.CreatedAtUtc,
+            employee.UpdatedAtUtc
+        });
     }
 
     private sealed record NormalizedEmployeeInput(
