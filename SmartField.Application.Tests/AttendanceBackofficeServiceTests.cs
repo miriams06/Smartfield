@@ -17,6 +17,7 @@ public class AttendanceBackofficeServiceTests
     private static readonly Guid SecondEmployeeId = Guid.Parse("dd6ff776-6f7a-4dbf-b83f-50bd492911f1");
     private static readonly Guid WorkSiteId = Guid.Parse("58e0bdd2-c572-4310-9f1f-7c06914b4505");
     private static readonly Guid SecondWorkSiteId = Guid.Parse("2602d54c-6c8d-44dd-8c9a-0a720674520e");
+    private static readonly Guid ProjectId = Guid.Parse("57da63f9-9cd4-4ed8-9fd8-e9af25fdd378");
     private static readonly Guid AttendanceEventId = Guid.Parse("e8e9acfd-71ca-485b-bf17-2fd3a2d15dd5");
     private static readonly DateTimeOffset Now = new(2026, 9, 1, 15, 0, 0, TimeSpan.Zero);
 
@@ -221,6 +222,166 @@ public class AttendanceBackofficeServiceTests
         Assert.Equal(180, row.WorkedMinutes);
     }
 
+    [Fact]
+    public async Task ExportBackofficeCsvAsync_ExportsRequiredColumnsAndCalculatedValues()
+    {
+        var store = CreateStore();
+        store.Events.AddRange(
+        [
+            CreateEvent(EmployeeId, AttendanceEventType.ClockIn, 8, 0, workSiteId: WorkSiteId, projectId: ProjectId),
+            CreateEvent(EmployeeId, AttendanceEventType.BreakStart, 12, 0, workSiteId: WorkSiteId, projectId: ProjectId),
+            CreateEvent(EmployeeId, AttendanceEventType.BreakEnd, 12, 30, workSiteId: WorkSiteId, projectId: ProjectId, isInsideGeofence: false),
+            CreateEvent(EmployeeId, AttendanceEventType.ClockOut, 14, 0, workSiteId: WorkSiteId, projectId: ProjectId)
+        ]);
+        var service = CreateService(store);
+
+        var result = await service.ExportBackofficeCsvAsync(
+            new AttendanceBackofficeExportFilter(
+                new DateOnly(2026, 9, 1),
+                new DateOnly(2026, 9, 1),
+                EmployeeId,
+                WorkSiteId),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("smartfield-attendance-20260901-20260901.csv", result.Value?.FileName);
+        Assert.Equal("text/csv; charset=utf-8", result.Value?.ContentType);
+
+        var lines = result.Value!.Content
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Equal(2, lines.Length);
+        Assert.Equal(
+            "Date,EmployeeNumber,EmployeeName,ClockIn,ClockOut,BreakMinutes,WorkedMinutes,WorkSite,ProjectCode,GeofenceStatus",
+            lines[0]);
+        Assert.Equal(
+            "2026-09-01,FUNC001,Joao Silva,08:00,14:00,30,330,SEDE - Sede,PRJ001,Fora da geofence",
+            lines[1]);
+    }
+
+    [Fact]
+    public async Task ExportBackofficeCsvAsync_AppliesAttendanceCorrection()
+    {
+        var store = CreateStore();
+        var clockIn = CreateEvent(
+            EmployeeId,
+            AttendanceEventType.ClockIn,
+            8,
+            0,
+            workSiteId: WorkSiteId);
+        clockIn.Id = AttendanceEventId;
+        store.Events.AddRange(
+        [
+            clockIn,
+            CreateEvent(EmployeeId, AttendanceEventType.ClockOut, 12, 0, workSiteId: WorkSiteId)
+        ]);
+        store.Corrections.Add(new AttendanceEventCorrectionReference(
+            Guid.NewGuid(),
+            AttendanceEventId,
+            clockIn.ServerTimestampUtc,
+            new DateTimeOffset(2026, 9, 1, 9, 0, 0, TimeSpan.Zero),
+            AttendanceEventType.ClockIn,
+            AttendanceEventType.ClockIn,
+            "Ajuste validado.",
+            UserId,
+            "admin@smartfield.local",
+            Now));
+        var service = CreateService(store);
+
+        var result = await service.ExportBackofficeCsvAsync(
+            new AttendanceBackofficeExportFilter(
+                new DateOnly(2026, 9, 1),
+                new DateOnly(2026, 9, 1),
+                EmployeeId,
+                null),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(
+            "2026-09-01,FUNC001,Joao Silva,09:00,12:00,0,180,SEDE - Sede,,Dentro da geofence",
+            result.Value!.Content,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            new DateTimeOffset(2026, 9, 1, 8, 0, 0, TimeSpan.Zero),
+            clockIn.ServerTimestampUtc);
+    }
+
+    [Fact]
+    public async Task ExportBackofficeCsvAsync_FiltersByWorkSite()
+    {
+        var store = CreateStore();
+        store.Events.AddRange(
+        [
+            CreateEvent(EmployeeId, AttendanceEventType.ClockIn, 8, 0, workSiteId: WorkSiteId),
+            CreateEvent(EmployeeId, AttendanceEventType.ClockOut, 12, 0, workSiteId: WorkSiteId),
+            CreateEvent(SecondEmployeeId, AttendanceEventType.ClockIn, 9, 0, workSiteId: SecondWorkSiteId),
+            CreateEvent(SecondEmployeeId, AttendanceEventType.ClockOut, 13, 0, workSiteId: SecondWorkSiteId)
+        ]);
+        var service = CreateService(store);
+
+        var result = await service.ExportBackofficeCsvAsync(
+            new AttendanceBackofficeExportFilter(
+                new DateOnly(2026, 9, 1),
+                new DateOnly(2026, 9, 1),
+                null,
+                SecondWorkSiteId),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("FUNC002", result.Value!.Content, StringComparison.Ordinal);
+        Assert.Contains("ARM - Armazem", result.Value.Content, StringComparison.Ordinal);
+        Assert.DoesNotContain("FUNC001", result.Value.Content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExportBackofficeCsvAsync_RejectsInvalidPeriod()
+    {
+        var service = CreateService(CreateStore());
+
+        var result = await service.ExportBackofficeCsvAsync(
+            new AttendanceBackofficeExportFilter(
+                new DateOnly(2026, 9, 2),
+                new DateOnly(2026, 9, 1),
+                null,
+                null),
+            CancellationToken.None);
+
+        Assert.Equal(AttendanceError.Validation, result.Error);
+        Assert.Contains(nameof(AttendanceBackofficeExportFilter.ToDate), result.ValidationErrors.Keys);
+    }
+
+    [Fact]
+    public async Task ExportBackofficeCsvAsync_EscapesCsvTextValues()
+    {
+        var store = CreateStore();
+        store.Employees[0] = new AttendanceBackofficeEmployeeReference(
+            EmployeeId,
+            "FUNC001",
+            "Joao, \"Silva\"",
+            WorkSiteId,
+            "Sede");
+        store.Events.AddRange(
+        [
+            CreateEvent(EmployeeId, AttendanceEventType.ClockIn, 8, 0, workSiteId: WorkSiteId),
+            CreateEvent(EmployeeId, AttendanceEventType.ClockOut, 12, 0, workSiteId: WorkSiteId)
+        ]);
+        var service = CreateService(store);
+
+        var result = await service.ExportBackofficeCsvAsync(
+            new AttendanceBackofficeExportFilter(
+                new DateOnly(2026, 9, 1),
+                new DateOnly(2026, 9, 1),
+                EmployeeId,
+                null),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(
+            "FUNC001,\"Joao, \"\"Silva\"\"\",08:00",
+            result.Value!.Content,
+            StringComparison.Ordinal);
+    }
+
     private static AttendanceService CreateService(FakeAttendanceStore store)
     {
         return new AttendanceService(
@@ -250,6 +411,13 @@ public class AttendanceBackofficeServiceTests
                 SecondWorkSiteId,
                 "Armazem")
         ]);
+        store.WorkSiteReferences.AddRange(
+        [
+            new AttendanceReferenceLookup(WorkSiteId, "SEDE - Sede"),
+            new AttendanceReferenceLookup(SecondWorkSiteId, "ARM - Armazem")
+        ]);
+        store.ProjectReferences.Add(
+            new AttendanceReferenceLookup(ProjectId, "PRJ001"));
 
         return store;
     }
@@ -261,6 +429,7 @@ public class AttendanceBackofficeServiceTests
         int minute,
         Guid? companyId = null,
         Guid? workSiteId = null,
+        Guid? projectId = null,
         bool? isInsideGeofence = true)
     {
         var timestamp = new DateTimeOffset(2026, 9, 1, hour, minute, 0, TimeSpan.Zero);
@@ -274,6 +443,7 @@ public class AttendanceBackofficeServiceTests
             CreatedAtUtc = timestamp,
             ClientEventId = Guid.NewGuid(),
             WorkSiteId = workSiteId,
+            ProjectId = projectId,
             IsInsideGeofence = isInsideGeofence
         };
     }
@@ -309,6 +479,8 @@ public class AttendanceBackofficeServiceTests
         public List<AttendanceBackofficeEmployeeReference> Employees { get; } = [];
         public List<AttendanceEvent> Events { get; } = [];
         public List<AttendanceEventCorrectionReference> Corrections { get; } = [];
+        public List<AttendanceReferenceLookup> WorkSiteReferences { get; } = [];
+        public List<AttendanceReferenceLookup> ProjectReferences { get; } = [];
         public List<AuditLog> AuditLogs { get; } = [];
         public List<DomainIntegrationOutbox> OutboxItems { get; } = [];
         public int SaveChangesCalls { get; private set; }
@@ -435,7 +607,36 @@ public class AttendanceBackofficeServiceTests
             return Task.FromResult(corrections);
         }
 
+        public Task<IReadOnlyList<AttendanceReferenceLookup>> GetWorkSiteReferencesAsync(
+            Guid companyId,
+            IReadOnlyCollection<Guid> workSiteIds,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<AttendanceReferenceLookup> references = companyId == CompanyId
+                ? WorkSiteReferences
+                    .Where(reference => workSiteIds.Contains(reference.Id))
+                    .ToArray()
+                : [];
+
+            return Task.FromResult(references);
+        }
+
+        public Task<IReadOnlyList<AttendanceReferenceLookup>> GetProjectReferencesAsync(
+            Guid companyId,
+            IReadOnlyCollection<Guid> projectIds,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<AttendanceReferenceLookup> references = companyId == CompanyId
+                ? ProjectReferences
+                    .Where(reference => projectIds.Contains(reference.Id))
+                    .ToArray()
+                : [];
+
+            return Task.FromResult(references);
+        }
+
         public void Add(AttendanceEvent attendanceEvent) => throw new NotSupportedException();
+
         public void Add(AttendanceCorrection attendanceCorrection)
         {
             Corrections.Add(new AttendanceEventCorrectionReference(
@@ -453,6 +654,7 @@ public class AttendanceBackofficeServiceTests
 
         public void Add(AuditLog auditLog) => AuditLogs.Add(auditLog);
         public void Add(DomainIntegrationOutbox integrationOutbox) => OutboxItems.Add(integrationOutbox);
+
         public Task SaveChangesAsync(CancellationToken cancellationToken)
         {
             SaveChangesCalls++;
