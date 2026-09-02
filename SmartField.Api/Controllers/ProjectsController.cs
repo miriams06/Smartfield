@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartField.Api.Authentication;
+using SmartField.Application.Audit;
 using SmartField.Application.Projects;
 
 namespace SmartField.Api.Controllers;
@@ -11,10 +13,17 @@ namespace SmartField.Api.Controllers;
 public sealed class ProjectsController : ControllerBase
 {
     private readonly IProjectService projectService;
+    private readonly IAuditService auditService;
+    private readonly TimeProvider timeProvider;
 
-    public ProjectsController(IProjectService projectService)
+    public ProjectsController(
+        IProjectService projectService,
+        IAuditService auditService,
+        TimeProvider timeProvider)
     {
         this.projectService = projectService;
+        this.auditService = auditService;
+        this.timeProvider = timeProvider;
     }
 
     [HttpGet]
@@ -56,10 +65,22 @@ public sealed class ProjectsController : ControllerBase
             return MapFailure(result);
         }
 
+        var created = result.Value!;
+        auditService.Add(
+            User.GetRequiredCompanyId(),
+            User.GetRequiredUserId(),
+            "Project",
+            created.Id,
+            "Created",
+            null,
+            JsonSerializer.Serialize(created),
+            timeProvider.GetUtcNow());
+        await auditService.SaveChangesAsync(cancellationToken);
+
         return CreatedAtAction(
             nameof(GetById),
-            new { id = result.Value!.Id },
-            result.Value);
+            new { id = created.Id },
+            created);
     }
 
     [HttpPut("{id:guid}")]
