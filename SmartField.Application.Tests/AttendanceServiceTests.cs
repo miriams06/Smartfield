@@ -176,6 +176,88 @@ public class AttendanceServiceTests
     }
 
     [Fact]
+    public async Task PunchAsync_AcceptsOutsideGeofenceWarningAndStoresWarning()
+    {
+        var store = new FakeAttendanceStore();
+        var geolocation = new FakeGeolocationService
+        {
+            Result = GeolocationResult<GeolocationValidationDto>.Success(
+                new GeolocationValidationDto(
+                    true,
+                    false,
+                    250,
+                    GeofenceMode.Warning,
+                    "OutsideGeofenceWarning",
+                    "Fora da geofence."))
+        };
+        var service = CreateService(store, geolocation);
+
+        var result = await service.PunchAsync(
+            CreateRequest("ClockIn"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value?.IsInsideGeofence);
+        Assert.Equal(250, result.Value?.DistanceFromWorkSiteMeters);
+        var attendanceEvent = Assert.Single(store.AttendanceEvents);
+        Assert.False(attendanceEvent.IsInsideGeofence);
+        Assert.Equal(250, attendanceEvent.DistanceFromWorkSiteMeters);
+        Assert.Equal(1, store.SaveChangesCalls);
+    }
+
+    [Fact]
+    public async Task PunchAsync_AcceptsClockInClockOutFlow()
+    {
+        var store = new FakeAttendanceStore();
+        var service = CreateService(store);
+
+        var clockIn = await service.PunchAsync(
+            CreateRequest("ClockIn"),
+            CancellationToken.None);
+        var clockOut = await service.PunchAsync(
+            CreateRequest("ClockOut"),
+            CancellationToken.None);
+
+        Assert.True(clockIn.IsSuccess);
+        Assert.True(clockOut.IsSuccess);
+        Assert.Equal(["ClockIn", "ClockOut"], store.AttendanceEvents.Select(item => item.EventType.ToString()));
+        Assert.Equal(2, store.AuditLogs.Count);
+        Assert.Equal(2, store.OutboxItems.Count);
+        Assert.Equal(2, store.SaveChangesCalls);
+    }
+
+    [Fact]
+    public async Task PunchAsync_AcceptsClockInBreakClockOutFlow()
+    {
+        var store = new FakeAttendanceStore();
+        var service = CreateService(store);
+
+        var clockIn = await service.PunchAsync(
+            CreateRequest("ClockIn"),
+            CancellationToken.None);
+        var breakStart = await service.PunchAsync(
+            CreateRequest("BreakStart"),
+            CancellationToken.None);
+        var breakEnd = await service.PunchAsync(
+            CreateRequest("BreakEnd"),
+            CancellationToken.None);
+        var clockOut = await service.PunchAsync(
+            CreateRequest("ClockOut"),
+            CancellationToken.None);
+
+        Assert.True(clockIn.IsSuccess);
+        Assert.True(breakStart.IsSuccess);
+        Assert.True(breakEnd.IsSuccess);
+        Assert.True(clockOut.IsSuccess);
+        Assert.Equal(
+            ["ClockIn", "BreakStart", "BreakEnd", "ClockOut"],
+            store.AttendanceEvents.Select(item => item.EventType.ToString()));
+        Assert.Equal(4, store.AuditLogs.Count);
+        Assert.Equal(4, store.OutboxItems.Count);
+        Assert.Equal(4, store.SaveChangesCalls);
+    }
+
+    [Fact]
     public async Task PunchAsync_ReturnsExistingEventForDuplicateClientEventId()
     {
         var request = CreateRequest("ClockIn");
@@ -550,7 +632,17 @@ public class AttendanceServiceTests
             Guid employeeId,
             CancellationToken cancellationToken)
         {
-            return Task.FromResult(LastEventType);
+            var lastEventType = LastEventType
+                ?? StateEvents
+                    .Concat(AttendanceEvents)
+                    .Where(attendanceEvent =>
+                        attendanceEvent.CompanyId == companyId
+                        && attendanceEvent.EmployeeId == employeeId)
+                    .OrderBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
+                    .Select(attendanceEvent => (AttendanceEventType?)attendanceEvent.EventType)
+                    .LastOrDefault();
+
+            return Task.FromResult(lastEventType);
         }
 
         public Task<AttendanceEmployeeStateReference?> GetEmployeeStateReferenceAsync(

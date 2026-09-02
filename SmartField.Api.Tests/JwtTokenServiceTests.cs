@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
@@ -65,6 +67,33 @@ public class JwtTokenServiceTests
         string[] backofficeRoles = [SmartFieldRoles.Admin, SmartFieldRoles.Manager];
 
         Assert.DoesNotContain(SmartFieldRoles.Employee, backofficeRoles);
+    }
+
+    [Theory]
+    [InlineData(SmartFieldRoles.Admin, true)]
+    [InlineData(SmartFieldRoles.Manager, true)]
+    [InlineData(SmartFieldRoles.Employee, false)]
+    public async Task BackofficePolicy_DoesNotAllowEmployeeRole(
+        string role,
+        bool expected)
+    {
+        var policy = new AuthorizationPolicyBuilder()
+            .RequireRole(SmartFieldRoles.Admin, SmartFieldRoles.Manager)
+            .Build();
+        var requirement = Assert.IsType<RolesAuthorizationRequirement>(
+            Assert.Single(policy.Requirements));
+        var user = new ClaimsPrincipal(
+            new ClaimsIdentity(
+                [new Claim(ClaimTypes.Role, role)],
+                authenticationType: "Test"));
+        var context = new AuthorizationHandlerContext(
+            policy.Requirements,
+            user,
+            resource: null);
+
+        await requirement.HandleAsync(context);
+
+        Assert.Equal(expected, context.HasSucceeded);
     }
 
     private static IConfiguration CreateConfiguration()

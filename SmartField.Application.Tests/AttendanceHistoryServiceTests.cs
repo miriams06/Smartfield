@@ -61,6 +61,27 @@ public class AttendanceHistoryServiceTests
     }
 
     [Fact]
+    public async Task GetHistoryAsync_ReturnsOnlyAuthenticatedEmployeeEvents()
+    {
+        var otherEmployeeId = Guid.NewGuid();
+        var store = new FakeAttendanceStore();
+        store.Events.AddRange(
+        [
+            CreateEvent(AttendanceEventType.ClockIn, 2026, 8, 31, 8, 0),
+            CreateEvent(AttendanceEventType.ClockOut, 2026, 8, 31, 12, 0),
+            CreateEvent(AttendanceEventType.ClockIn, 2026, 9, 1, 9, 0, employeeId: otherEmployeeId),
+            CreateEvent(AttendanceEventType.ClockOut, 2026, 9, 1, 17, 0, employeeId: otherEmployeeId)
+        ]);
+        var service = CreateService(store);
+
+        var result = await service.GetHistoryAsync(CancellationToken.None);
+
+        var day = Assert.Single(result.Value!);
+        Assert.Equal("2026-08-31", day.Date);
+        Assert.Equal(240, day.WorkedMinutes);
+    }
+
+    [Fact]
     public async Task GetDayAsync_ReturnsBreaksEventsAndGeofenceWarning()
     {
         var store = new FakeAttendanceStore();
@@ -140,7 +161,8 @@ public class AttendanceHistoryServiceTests
         int day,
         int hour,
         int minute,
-        bool? isInsideGeofence = true)
+        bool? isInsideGeofence = true,
+        Guid? employeeId = null)
     {
         var timestamp = new DateTimeOffset(
             year,
@@ -155,7 +177,7 @@ public class AttendanceHistoryServiceTests
         {
             Id = Guid.NewGuid(),
             CompanyId = CompanyId,
-            EmployeeId = EmployeeId,
+            EmployeeId = employeeId ?? EmployeeId,
             EventType = eventType,
             ServerTimestampUtc = timestamp,
             ClientEventId = Guid.NewGuid(),
