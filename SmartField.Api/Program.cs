@@ -12,6 +12,7 @@ using SmartField.Application.Projects;
 using SmartField.Application.WorkSites;
 using SmartField.Infrastructure.Identity;
 using SmartField.Infrastructure.Persistence;
+using SmartField.Integrations.Primavera;
 
 var builder = WebApplication.CreateBuilder(args);
 var jwtSigningKey = JwtSigningKey.Create(builder.Configuration, builder.Environment);
@@ -37,9 +38,17 @@ builder.Services.AddCors(options =>
 });
 builder.Services.Configure<JwtOptions>(
     builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.AddSingleton(
+    builder.Configuration
+        .GetSection(PrimaveraOptions.SectionName)
+        .Get<PrimaveraOptions>() ?? new PrimaveraOptions());
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(jwtSigningKey);
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IPrimaveraClient, NotConfiguredPrimaveraClient>();
+builder.Services.AddScoped<IEmployeeIntegrationService, PrimaveraEmployeeIntegrationService>();
+builder.Services.AddScoped<IAttendanceIntegrationService, PrimaveraAttendanceIntegrationService>();
+builder.Services.AddScoped<IProjectIntegrationService, PrimaveraProjectIntegrationService>();
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IGeolocationService, GeolocationService>();
