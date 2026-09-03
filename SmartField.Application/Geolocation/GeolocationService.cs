@@ -91,6 +91,18 @@ public sealed class GeolocationService : IGeolocationService
         GeolocationValidationRequest request,
         GeofenceValidationReference reference)
     {
+        if (reference.RequireGeolocation
+            && (!request.Latitude.HasValue || !request.Longitude.HasValue))
+        {
+            return new GeolocationValidationDto(
+                false,
+                null,
+                null,
+                reference.GeofenceMode,
+                "LocationRequired",
+                "A localização é obrigatória para registar a picagem.");
+        }
+
         if (reference.GeofenceMode == GeofenceMode.Disabled)
         {
             return new GeolocationValidationDto(

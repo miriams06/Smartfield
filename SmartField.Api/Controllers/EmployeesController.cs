@@ -1,9 +1,13 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SmartField.Api.Authentication;
 using SmartField.Application.Audit;
 using SmartField.Application.Employees;
+using SmartField.Infrastructure.Identity;
+using SmartField.Infrastructure.Persistence;
 
 namespace SmartField.Api.Controllers;
 
@@ -14,15 +18,21 @@ public sealed class EmployeesController : ControllerBase
 {
     private readonly IEmployeeService employeeService;
     private readonly IAuditService auditService;
+    private readonly UserManager<ApplicationUser> userManager;
+    private readonly SmartFieldDbContext dbContext;
     private readonly TimeProvider timeProvider;
 
     public EmployeesController(
         IEmployeeService employeeService,
         IAuditService auditService,
+        UserManager<ApplicationUser> userManager,
+        SmartFieldDbContext dbContext,
         TimeProvider timeProvider)
     {
         this.employeeService = employeeService;
         this.auditService = auditService;
+        this.userManager = userManager;
+        this.dbContext = dbContext;
         this.timeProvider = timeProvider;
     }
 
@@ -32,6 +42,117 @@ public sealed class EmployeesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await employeeService.SearchAsync(search, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return MapFailure(result);
+        }
+
+        return Ok(result.Value);
+    }
+
+    [HttpPost("{id:guid}/user")]
+    public async Task<ActionResult<EmployeeDto>> CreateUser(
+        Guid id,
+        CreateEmployeeUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        var companyId = User.GetRequiredCompanyId();
+        var employee = await dbContext.Employees.SingleOrDefaultAsync(
+            item => item.CompanyId == companyId && item.Id == id,
+            cancellationToken);
+
+        if (employee is null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Status = StatusCodes.Status404NotFound,
+                Title = "Funcionário não encontrado."
+            });
+        }
+
+        var employeeAlreadyHasUser = await dbContext.Users.AnyAsync(
+            user => user.CompanyId == companyId && user.EmployeeId == id,
+            cancellationToken);
+
+        if (employeeAlreadyHasUser)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Funcionário já tem utilizador.",
+                Detail = "Este funcionário já tem uma conta de login associada."
+            });
+        }
+
+        var email = request.Email?.Trim();
+        var validationErrors = ValidateUserRequest(email, request.Password);
+        if (validationErrors.Count > 0)
+        {
+            return BadRequest(new ValidationProblemDetails(validationErrors)
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Os dados da conta de login não são válidos."
+            });
+        }
+
+        var existingUser = await userManager.FindByEmailAsync(email!);
+        if (existingUser is not null)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Email de login já utilizado.",
+                Detail = "Já existe uma conta de login com este email."
+            });
+        }
+
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            CompanyId = companyId,
+            EmployeeId = id,
+            IsActive = employee.IsActive
+        };
+
+        var createResult = await userManager.CreateAsync(user, request.Password);
+        if (!createResult.Succeeded)
+        {
+            return BadRequest(new ValidationProblemDetails(
+                MapIdentityErrors(createResult.Errors))
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Não foi possível criar a conta de login."
+            });
+        }
+
+        var roleResult = await userManager.AddToRoleAsync(user, SmartFieldRoles.Employee);
+        if (!roleResult.Succeeded)
+        {
+            await userManager.DeleteAsync(user);
+            return BadRequest(new ValidationProblemDetails(
+                MapIdentityErrors(roleResult.Errors))
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Não foi possível atribuir a role de funcionário."
+            });
+        }
+
+        await AddAuditAsync(
+            id,
+            "UserCreated",
+            null,
+            JsonSerializer.Serialize(new
+            {
+                UserId = user.Id,
+                user.Email,
+                Role = SmartFieldRoles.Employee
+            }),
+            cancellationToken);
+
+        var result = await employeeService.GetAsync(id, cancellationToken);
         if (!result.IsSuccess)
         {
             return MapFailure(result);
@@ -140,6 +261,77 @@ public sealed class EmployeesController : ControllerBase
             newValues,
             timeProvider.GetUtcNow());
         await auditService.SaveChangesAsync(cancellationToken);
+    }
+
+    private static Dictionary<string, string[]> ValidateUserRequest(
+        string? email,
+        string? password)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            errors[nameof(CreateEmployeeUserRequest.Email)] =
+                ["O email de login é obrigatório."];
+        }
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            errors[nameof(CreateEmployeeUserRequest.Password)] =
+                ["A password é obrigatória."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> MapIdentityErrors(
+        IEnumerable<IdentityError> errors)
+    {
+        var mappedErrors = errors
+            .Select(error => MapIdentityError(error.Code, error.Description))
+            .GroupBy(error => error.PropertyName)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(error => error.Message).ToArray());
+
+        return mappedErrors.Count == 0
+            ? new Dictionary<string, string[]>
+            {
+                [nameof(CreateEmployeeUserRequest.Password)] =
+                    ["A password não cumpre os requisitos de segurança."]
+            }
+            : mappedErrors;
+    }
+
+    private static (string PropertyName, string Message) MapIdentityError(
+        string code,
+        string description)
+    {
+        return code switch
+        {
+            "DuplicateUserName" or "DuplicateEmail" =>
+                (nameof(CreateEmployeeUserRequest.Email),
+                    "Já existe uma conta de login com este email."),
+            "InvalidEmail" =>
+                (nameof(CreateEmployeeUserRequest.Email),
+                    "O email de login não tem um formato válido."),
+            "PasswordTooShort" =>
+                (nameof(CreateEmployeeUserRequest.Password),
+                    "A password deve ter pelo menos 6 caracteres."),
+            "PasswordRequiresNonAlphanumeric" =>
+                (nameof(CreateEmployeeUserRequest.Password),
+                    "A password deve incluir pelo menos um símbolo, como !, ? ou #."),
+            "PasswordRequiresDigit" =>
+                (nameof(CreateEmployeeUserRequest.Password),
+                    "A password deve incluir pelo menos um número."),
+            "PasswordRequiresLower" =>
+                (nameof(CreateEmployeeUserRequest.Password),
+                    "A password deve incluir pelo menos uma letra minúscula."),
+            "PasswordRequiresUpper" =>
+                (nameof(CreateEmployeeUserRequest.Password),
+                    "A password deve incluir pelo menos uma letra maiúscula."),
+            _ => (nameof(CreateEmployeeUserRequest.Password), description)
+        };
     }
 
     private ActionResult MapFailure<T>(EmployeeResult<T> result)

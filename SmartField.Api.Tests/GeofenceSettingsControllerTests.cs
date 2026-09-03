@@ -7,12 +7,12 @@ using SmartField.Api.Controllers;
 
 namespace SmartField.Api.Tests;
 
-public class EmployeesControllerTests
+public class GeofenceSettingsControllerTests
 {
     [Fact]
     public void Controller_RequiresBackofficePolicy()
     {
-        var authorize = typeof(EmployeesController)
+        var authorize = typeof(GeofenceSettingsController)
             .GetCustomAttribute<AuthorizeAttribute>();
 
         Assert.NotNull(authorize);
@@ -20,17 +20,14 @@ public class EmployeesControllerTests
     }
 
     [Fact]
-    public void Controller_ExposesPlannerRoutes()
+    public void Controller_ExposesSettingsRoutes()
     {
-        var controllerRoute = typeof(EmployeesController)
+        var controllerRoute = typeof(GeofenceSettingsController)
             .GetCustomAttribute<RouteAttribute>();
 
-        Assert.Equal("api/employees", controllerRoute?.Template);
-        AssertHttpMethod(nameof(EmployeesController.Search), typeof(HttpGetAttribute), null);
-        AssertHttpMethod(nameof(EmployeesController.GetById), typeof(HttpGetAttribute), "{id:guid}");
-        AssertHttpMethod(nameof(EmployeesController.Create), typeof(HttpPostAttribute), null);
-        AssertHttpMethod(nameof(EmployeesController.Update), typeof(HttpPutAttribute), "{id:guid}");
-        AssertHttpMethod(nameof(EmployeesController.CreateUser), typeof(HttpPostAttribute), "{id:guid}/user");
+        Assert.Equal("api/geofence-settings", controllerRoute?.Template);
+        AssertHttpMethod(nameof(GeofenceSettingsController.Get), typeof(HttpGetAttribute), null);
+        AssertHttpMethod(nameof(GeofenceSettingsController.Update), typeof(HttpPutAttribute), null);
     }
 
     private static void AssertHttpMethod(
@@ -38,7 +35,7 @@ public class EmployeesControllerTests
         Type attributeType,
         string? expectedTemplate)
     {
-        var method = typeof(EmployeesController).GetMethod(methodName);
+        var method = typeof(GeofenceSettingsController).GetMethod(methodName);
         var attribute = method?.GetCustomAttributes(attributeType, inherit: false)
             .OfType<HttpMethodAttribute>()
             .SingleOrDefault();

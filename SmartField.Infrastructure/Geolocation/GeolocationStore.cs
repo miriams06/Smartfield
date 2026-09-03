@@ -24,6 +24,7 @@ public sealed class GeolocationStore : IGeolocationStore
             .Where(companySettings => companySettings.CompanyId == companyId)
             .Select(companySettings => new
             {
+                companySettings.RequireGeolocation,
                 companySettings.GeofenceMode,
                 companySettings.DefaultGeofenceRadiusMeters
             })
@@ -51,6 +52,7 @@ public sealed class GeolocationStore : IGeolocationStore
         }
 
         return new GeofenceValidationReference(
+            settings?.RequireGeolocation ?? false,
             settings?.GeofenceMode ?? GeofenceMode.Disabled,
             settings?.DefaultGeofenceRadiusMeters ?? 0,
             workSite);

@@ -19,11 +19,43 @@
 
 .worksites-toolbar,
 .worksites-list-panel,
-.worksite-editor {
+.worksite-editor,
+.geofence-settings-panel {
     padding: 1rem;
     border: 1px solid #d7dee8;
     border-radius: 8px;
     background: #ffffff;
+}
+
+.geofence-settings-panel h2 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.geofence-settings-panel {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.geofence-settings-grid {
+    display: grid;
+    grid-template-columns: minmax(11rem, 1fr) minmax(9rem, 0.8fr) minmax(12rem, 1fr) auto;
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.geofence-settings-grid label:not(.geofence-required-field) {
+    display: grid;
+    gap: 0.35rem;
+    font-weight: 700;
+}
+
+.geofence-required-field {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    font-weight: 700;
 }
 
 .worksites-search-label {
@@ -173,9 +205,14 @@
 @media (max-width: 760px) {
     .worksites-header,
     .worksites-search,
+    .geofence-settings-grid,
     .worksite-form-actions {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .geofence-settings-grid {
+        display: flex;
     }
 
     .worksite-form-grid {

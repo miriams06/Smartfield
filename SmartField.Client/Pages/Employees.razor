@@ -196,6 +196,47 @@
                         </button>
                     </div>
                 </EditForm>
+
+                @if (editor.Id.HasValue)
+                {
+                    <section class="employee-login-panel" aria-labelledby="employee-login-title">
+                        <div>
+                            <p class="eyebrow">Login</p>
+                            <h3 id="employee-login-title">Conta de utilizador</h3>
+                        </div>
+
+                        @if (editor.UserId.HasValue)
+                        {
+                            <p class="muted">Conta associada: @editor.UserEmail</p>
+                        }
+                        else
+                        {
+                            <EditForm Model="@userEditor" OnValidSubmit="CreateUserAsync">
+                                <DataAnnotationsValidator />
+                                <div class="employee-login-grid">
+                                    <label>
+                                        Email de login
+                                        <InputText class="form-control" type="email" @bind-Value="userEditor.Email" />
+                                        <ValidationMessage For="@(() => userEditor.Email)" />
+                                    </label>
+
+                                    <label>
+                                        Password
+                                        <InputText class="form-control" type="password" @bind-Value="userEditor.Password" autocomplete="new-password" />
+                                        <small>Mínimo 6 caracteres, com maiúscula, minúscula, número e símbolo.</small>
+                                        <ValidationMessage For="@(() => userEditor.Password)" />
+                                    </label>
+                                </div>
+
+                                <button class="btn btn-primary employee-login-action"
+                                        type="submit"
+                                        disabled="@isBusy">
+                                    @(isCreatingUser ? "A criar conta..." : "Criar conta de login")
+                                </button>
+                            </EditForm>
+                        }
+                    </section>
+                }
             </aside>
         }
     </div>
@@ -205,13 +246,15 @@
     private IReadOnlyList<EmployeeDto> employees = [];
     private EmployeeOptions options = new([], []);
     private EmployeeEditorModel editor = new();
+    private EmployeeUserEditorModel userEditor = new();
     private string? searchText;
     private string? successMessage;
     private string? errorMessage;
     private bool isLoading;
     private bool isSaving;
+    private bool isCreatingUser;
     private bool isEditing;
-    private bool isBusy => isLoading || isSaving;
+    private bool isBusy => isLoading || isSaving || isCreatingUser;
 
     protected override async Task OnInitializedAsync()
     {
@@ -277,6 +320,7 @@
                 null,
                 CancellationToken.None);
             editor = new EmployeeEditorModel();
+            userEditor = new EmployeeUserEditorModel();
             isEditing = true;
         }
         catch (EmployeeApiException exception)
@@ -313,6 +357,10 @@
 
             editor = new EmployeeEditorModel();
             editor.Load(await employeeTask);
+            userEditor = new EmployeeUserEditorModel
+            {
+                Email = editor.Email ?? string.Empty
+            };
             options = await optionsTask;
             isEditing = true;
         }
@@ -377,7 +425,49 @@
     {
         isEditing = false;
         editor = new EmployeeEditorModel();
+        userEditor = new EmployeeUserEditorModel();
         errorMessage = null;
+    }
+
+    private async Task CreateUserAsync()
+    {
+        if (!editor.Id.HasValue)
+        {
+            return;
+        }
+
+        isCreatingUser = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var updatedEmployee = await EmployeeApiClient.CreateUserAsync(
+                editor.Id.Value,
+                userEditor.ToRequest(),
+                CancellationToken.None);
+
+            editor.Load(updatedEmployee);
+            userEditor = new EmployeeUserEditorModel();
+            options = await EmployeeApiClient.GetOptionsAsync(
+                editor.Id,
+                CancellationToken.None);
+            successMessage = "Conta de login criada e associada ao funcionário.";
+            await LoadEmployeesAsync();
+        }
+        catch (EmployeeApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isCreatingUser = false;
+        }
     }
 
     private static string FormatWorkSite(EmployeeWorkSiteOption workSite)

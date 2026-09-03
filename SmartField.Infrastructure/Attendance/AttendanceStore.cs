@@ -109,7 +109,8 @@ public sealed class AttendanceStore : IAttendanceStore
                 dbContext.Companies
                     .Where(company => company.Id == companyId)
                     .Select(company => company.TimeZone)
-                    .Single()))
+                    .Single(),
+                employee.DefaultWorkSiteId))
             .SingleOrDefaultAsync(cancellationToken);
     }
 

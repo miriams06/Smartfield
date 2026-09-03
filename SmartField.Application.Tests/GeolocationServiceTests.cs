@@ -18,6 +18,7 @@ public class GeolocationServiceTests
         var store = new FakeGeolocationStore
         {
             Reference = new GeofenceValidationReference(
+                false,
                 GeofenceMode.Disabled,
                 100,
                 null)
@@ -126,6 +127,27 @@ public class GeolocationServiceTests
     }
 
     [Fact]
+    public async Task ValidateAsync_RequireGeolocationRejectsWithoutLocation()
+    {
+        var store = new FakeGeolocationStore
+        {
+            Reference = CreateReference(GeofenceMode.Disabled) with
+            {
+                RequireGeolocation = true
+            }
+        };
+        var service = CreateService(store);
+
+        var result = await service.ValidateAsync(
+            new GeolocationValidationRequest(null, null, null, null),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value?.IsAccepted);
+        Assert.Equal("LocationRequired", result.Value?.ResultCode);
+    }
+
+    [Fact]
     public async Task ValidateAsync_ReturnsValidationForInvalidCoordinates()
     {
         var store = new FakeGeolocationStore();
@@ -197,6 +219,7 @@ public class GeolocationServiceTests
     private static GeofenceValidationReference CreateReference(GeofenceMode geofenceMode)
     {
         return new GeofenceValidationReference(
+            false,
             geofenceMode,
             100,
             new WorkSiteGeofenceReference(

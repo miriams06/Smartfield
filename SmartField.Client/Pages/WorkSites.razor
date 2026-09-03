@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = AuthConstants.BackofficeRoles)]
 @layout BackofficeLayout
 @inject WorkSiteApiClient WorkSiteApiClient
+@inject GeofenceSettingsApiClient GeofenceSettingsApiClient
 
 <PageTitle>Locais de trabalho - SmartField Time</PageTitle>
 
@@ -26,6 +27,43 @@
     {
         <div class="worksite-message worksite-message-error" role="alert">@errorMessage</div>
     }
+
+    <section class="geofence-settings-panel" aria-labelledby="geofence-settings-title">
+        <div>
+            <p class="eyebrow">Geofence</p>
+            <h2 id="geofence-settings-title">Configuração de localização</h2>
+        </div>
+
+        <EditForm Model="@geofenceSettingsEditor" OnValidSubmit="SaveGeofenceSettingsAsync">
+            <DataAnnotationsValidator />
+            <div class="geofence-settings-grid">
+                <label>
+                    Modo
+                    <InputSelect class="form-control" TValue="GeofenceMode" @bind-Value="geofenceSettingsEditor.GeofenceMode">
+                        <option value="@GeofenceMode.Disabled">Desativado</option>
+                        <option value="@GeofenceMode.Warning">Avisar fora da geofence</option>
+                        <option value="@GeofenceMode.Block">Bloquear fora da geofence</option>
+                    </InputSelect>
+                    <ValidationMessage For="@(() => geofenceSettingsEditor.GeofenceMode)" />
+                </label>
+
+                <label>
+                    Raio por defeito
+                    <InputNumber class="form-control" @bind-Value="geofenceSettingsEditor.DefaultGeofenceRadiusMeters" />
+                    <ValidationMessage For="@(() => geofenceSettingsEditor.DefaultGeofenceRadiusMeters)" />
+                </label>
+
+                <label class="geofence-required-field">
+                    <InputCheckbox @bind-Value="geofenceSettingsEditor.RequireGeolocation" />
+                    Exigir localização na picagem
+                </label>
+
+                <button class="btn btn-primary" type="submit" disabled="@isBusy">
+                    @(isSavingGeofenceSettings ? "A guardar..." : "Guardar geofence")
+                </button>
+            </div>
+        </EditForm>
+    </section>
 
     <div class="worksites-toolbar">
         <label class="worksites-search-label" for="worksite-search">Pesquisar</label>
@@ -193,17 +231,39 @@
 @code {
     private IReadOnlyList<WorkSiteDto> workSites = [];
     private WorkSiteEditorModel editor = new();
+    private GeofenceSettingsEditorModel geofenceSettingsEditor = new();
     private string? searchText;
     private string? successMessage;
     private string? errorMessage;
     private bool isLoading;
     private bool isSaving;
+    private bool isSavingGeofenceSettings;
     private bool isEditing;
-    private bool isBusy => isLoading || isSaving;
+    private bool isBusy => isLoading || isSaving || isSavingGeofenceSettings;
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadGeofenceSettingsAsync();
         await LoadWorkSitesAsync();
+    }
+
+    private async Task LoadGeofenceSettingsAsync()
+    {
+        try
+        {
+            var settings = await GeofenceSettingsApiClient.GetAsync(
+                CancellationToken.None);
+            geofenceSettingsEditor.Load(settings);
+        }
+        catch (GeolocationApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
     }
 
     private async Task LoadWorkSitesAsync()
@@ -331,6 +391,36 @@
         finally
         {
             isSaving = false;
+        }
+    }
+
+    private async Task SaveGeofenceSettingsAsync()
+    {
+        isSavingGeofenceSettings = true;
+        errorMessage = null;
+        successMessage = null;
+
+        try
+        {
+            var settings = await GeofenceSettingsApiClient.UpdateAsync(
+                geofenceSettingsEditor.ToUpdateRequest(),
+                CancellationToken.None);
+
+            geofenceSettingsEditor.Load(settings);
+            successMessage = "Configuração de geofence atualizada com sucesso.";
+        }
+        catch (GeolocationApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        finally
+        {
+            isSavingGeofenceSettings = false;
         }
     }
 

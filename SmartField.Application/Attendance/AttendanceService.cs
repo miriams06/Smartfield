@@ -662,12 +662,14 @@ public sealed class AttendanceService : IAttendanceService
                 AttendanceError.ProjectNotFound);
         }
 
+        var effectiveWorkSiteId = request.WorkSiteId ?? context.DefaultWorkSiteId;
+
         var geolocationResult = await geolocationService.ValidateAsync(
             new GeolocationValidationRequest(
                 request.Latitude,
                 request.Longitude,
                 request.AccuracyMeters,
-                request.WorkSiteId),
+                effectiveWorkSiteId),
             cancellationToken);
 
         if (!geolocationResult.IsSuccess)
@@ -724,7 +726,7 @@ public sealed class AttendanceService : IAttendanceService
             Latitude = request.Latitude,
             Longitude = request.Longitude,
             LocationAccuracyMeters = request.AccuracyMeters,
-            WorkSiteId = request.WorkSiteId,
+            WorkSiteId = effectiveWorkSiteId,
             ProjectId = request.ProjectId,
             IsInsideGeofence = geolocation.IsInsideGeofence,
             DistanceFromWorkSiteMeters = geolocation.DistanceFromWorkSiteMeters,
@@ -804,10 +806,21 @@ public sealed class AttendanceService : IAttendanceService
             return AttendanceContext.Failure(AttendanceError.EmployeeUnavailable);
         }
 
+        var employee = await attendanceStore.GetEmployeeStateReferenceAsync(
+            companyId.Value,
+            employeeId.Value,
+            cancellationToken);
+
+        if (employee is null)
+        {
+            return AttendanceContext.Failure(AttendanceError.EmployeeUnavailable);
+        }
+
         return AttendanceContext.Success(
             companyId.Value,
             userId.Value,
-            employeeId.Value);
+            employeeId.Value,
+            employee.DefaultWorkSiteId);
     }
 
     private async Task<AttendanceHistoryContext> GetHistoryContextAsync(
@@ -1563,6 +1576,7 @@ public sealed class AttendanceService : IAttendanceService
         Guid CompanyId,
         Guid UserId,
         Guid EmployeeId,
+        Guid? DefaultWorkSiteId,
         AttendanceError Error)
     {
         public bool IsSuccess => Error == AttendanceError.None;
@@ -1570,12 +1584,14 @@ public sealed class AttendanceService : IAttendanceService
         public static AttendanceContext Success(
             Guid companyId,
             Guid userId,
-            Guid employeeId)
+            Guid employeeId,
+            Guid? defaultWorkSiteId)
         {
             return new AttendanceContext(
                 companyId,
                 userId,
                 employeeId,
+                defaultWorkSiteId,
                 AttendanceError.None);
         }
 
@@ -1585,6 +1601,7 @@ public sealed class AttendanceService : IAttendanceService
                 Guid.Empty,
                 Guid.Empty,
                 Guid.Empty,
+                null,
                 error);
         }
     }

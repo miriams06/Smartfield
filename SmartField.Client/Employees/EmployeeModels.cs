@@ -53,6 +53,10 @@ public sealed record UpdateEmployeeRequest(
     Guid? UserId,
     string? ErpEmployeeCode);
 
+public sealed record CreateEmployeeUserRequest(
+    string Email,
+    string Password);
+
 public sealed class EmployeeEditorModel
 {
     public Guid? Id { get; set; }
@@ -81,6 +85,8 @@ public sealed class EmployeeEditorModel
     [StringLength(100, ErrorMessage = "O código ERP não pode exceder 100 caracteres.")]
     public string? ErpEmployeeCode { get; set; }
 
+    public string? UserEmail { get; set; }
+
     public void Load(EmployeeDto employee)
     {
         Id = employee.Id;
@@ -91,6 +97,7 @@ public sealed class EmployeeEditorModel
         IsActive = employee.IsActive;
         DefaultWorkSiteId = employee.DefaultWorkSiteId;
         UserId = employee.UserId;
+        UserEmail = employee.UserEmail;
         ErpEmployeeCode = employee.ErpEmployeeCode;
     }
 
@@ -118,6 +125,25 @@ public sealed class EmployeeEditorModel
             DefaultWorkSiteId,
             UserId,
             ErpEmployeeCode);
+    }
+}
+
+public sealed class EmployeeUserEditorModel
+{
+    [Required(ErrorMessage = "O email de login é obrigatório.")]
+    [EmailAddress(ErrorMessage = "O email de login não tem um formato válido.")]
+    [StringLength(320, ErrorMessage = "O email de login não pode exceder 320 caracteres.")]
+    public string Email { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "A password é obrigatória.")]
+    [MinLength(6, ErrorMessage = "A password deve ter pelo menos 6 caracteres.")]
+    public string Password { get; set; } = string.Empty;
+
+    public CreateEmployeeUserRequest ToRequest()
+    {
+        return new CreateEmployeeUserRequest(
+            Email,
+            Password);
     }
 }
 

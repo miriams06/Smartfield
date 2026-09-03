@@ -73,6 +73,19 @@ public sealed class EmployeeApiClient
         return await ReadRequiredAsync<EmployeeDto>(response, cancellationToken);
     }
 
+    public async Task<EmployeeDto> CreateUserAsync(
+        Guid employeeId,
+        CreateEmployeeUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            $"api/employees/{employeeId}/user",
+            request,
+            cancellationToken);
+
+        return await ReadRequiredAsync<EmployeeDto>(response, cancellationToken);
+    }
+
     private static async Task<T> ReadRequiredAsync<T>(
         HttpResponseMessage response,
         CancellationToken cancellationToken)

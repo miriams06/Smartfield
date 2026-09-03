@@ -72,6 +72,7 @@ builder.Services.AddScoped<IProjectIntegrationService, PrimaveraProjectIntegrati
 builder.Services.AddScoped<IAttendanceService, AttendanceService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<IGeofenceSettingsService, GeofenceSettingsService>();
 builder.Services.AddScoped<IGeolocationService, GeolocationService>();
 builder.Services.AddScoped<IIntegrationOutboxService, IntegrationOutboxService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();

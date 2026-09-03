@@ -176,6 +176,23 @@ public class AttendanceServiceTests
     }
 
     [Fact]
+    public async Task PunchAsync_UsesEmployeeDefaultWorkSiteWhenRequestOmitsWorkSite()
+    {
+        var store = new FakeAttendanceStore();
+        var geolocation = new FakeGeolocationService();
+        var service = CreateService(store, geolocation);
+
+        var result = await service.PunchAsync(
+            CreateRequest("ClockIn") with { WorkSiteId = null },
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(WorkSiteId, geolocation.LastRequest?.WorkSiteId);
+        var attendanceEvent = Assert.Single(store.AttendanceEvents);
+        Assert.Equal(WorkSiteId, attendanceEvent.WorkSiteId);
+    }
+
+    [Fact]
     public async Task PunchAsync_AcceptsOutsideGeofenceWarningAndStoresWarning()
     {
         var store = new FakeAttendanceStore();
@@ -529,6 +546,8 @@ public class AttendanceServiceTests
 
     private sealed class FakeGeolocationService : IGeolocationService
     {
+        public GeolocationValidationRequest? LastRequest { get; private set; }
+
         public GeolocationResult<GeolocationValidationDto> Result { get; set; } =
             GeolocationResult<GeolocationValidationDto>.Success(
                 new GeolocationValidationDto(
@@ -543,6 +562,7 @@ public class AttendanceServiceTests
             GeolocationValidationRequest request,
             CancellationToken cancellationToken)
         {
+            LastRequest = request;
             return Task.FromResult(Result);
         }
     }
@@ -655,7 +675,8 @@ public class AttendanceServiceTests
                     ? new AttendanceEmployeeStateReference(
                         EmployeeId,
                         "Funcionario Demo",
-                        "Europe/Lisbon")
+                        "Europe/Lisbon",
+                        WorkSiteId)
                     : null;
 
             return Task.FromResult(employee);

@@ -171,7 +171,8 @@ public sealed record AttendanceCorrectionDto(
 public sealed record AttendanceEmployeeStateReference(
     Guid EmployeeId,
     string EmployeeName,
-    string CompanyTimeZone);
+    string CompanyTimeZone,
+    Guid? DefaultWorkSiteId);
 
 public sealed record AttendanceBackofficeEmployeeReference(
     Guid EmployeeId,

@@ -160,7 +160,7 @@ public class AttendanceTodayServiceTests
             => Task.FromResult(Events.OrderBy(item => item.ServerTimestampUtc).Select(item => (AttendanceEventType?)item.EventType).LastOrDefault());
 
         public Task<AttendanceEmployeeStateReference?> GetEmployeeStateReferenceAsync(Guid companyId, Guid employeeId, CancellationToken cancellationToken)
-            => Task.FromResult<AttendanceEmployeeStateReference?>(new AttendanceEmployeeStateReference(EmployeeId, "Funcionario Demo", "UTC"));
+            => Task.FromResult<AttendanceEmployeeStateReference?>(new AttendanceEmployeeStateReference(EmployeeId, "Funcionario Demo", "UTC", null));
 
         public Task<string?> GetCompanyTimeZoneAsync(Guid companyId, CancellationToken cancellationToken)
             => Task.FromResult<string?>(companyId == CompanyId ? "UTC" : null);

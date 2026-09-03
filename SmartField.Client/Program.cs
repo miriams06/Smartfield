@@ -31,6 +31,7 @@ builder.Services.AddScoped<AuthenticationService>();
 builder.Services.AddScoped<AttendanceApiClient>();
 builder.Services.AddScoped<BrowserGeolocationService>();
 builder.Services.AddScoped<EmployeeApiClient>();
+builder.Services.AddScoped<GeofenceSettingsApiClient>();
 builder.Services.AddScoped<GeolocationApiClient>();
 builder.Services.AddScoped<ProjectApiClient>();
 builder.Services.AddScoped<WorkSiteApiClient>();

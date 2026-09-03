@@ -280,7 +280,8 @@ public class AttendanceHistoryServiceTests
                 new AttendanceEmployeeStateReference(
                     EmployeeId,
                     "Funcionario Demo",
-                    "UTC"));
+                    "UTC",
+                    null));
         }
 
         public Task<string?> GetCompanyTimeZoneAsync(

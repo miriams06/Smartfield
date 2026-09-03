@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IAttendanceStore, AttendanceStore>();
         services.AddScoped<IAuditStore, AuditStore>();
         services.AddScoped<IEmployeeStore, EmployeeStore>();
+        services.AddScoped<IGeofenceSettingsStore, GeofenceSettingsStore>();
         services.AddScoped<IGeolocationStore, GeolocationStore>();
         services.AddScoped<IIntegrationOutboxStore, IntegrationOutboxStore>();
         services.AddScoped<IProjectStore, ProjectStore>();

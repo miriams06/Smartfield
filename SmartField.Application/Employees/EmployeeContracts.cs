@@ -50,6 +50,10 @@ public sealed record UpdateEmployeeRequest(
     Guid? UserId,
     string? ErpEmployeeCode);
 
+public sealed record CreateEmployeeUserRequest(
+    string Email,
+    string Password);
+
 public enum EmployeeError
 {
     None = 0,

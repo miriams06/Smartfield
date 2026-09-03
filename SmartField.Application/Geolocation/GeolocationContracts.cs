@@ -17,6 +17,7 @@ public sealed record GeolocationValidationDto(
     string Message);
 
 public sealed record GeofenceValidationReference(
+    bool RequireGeolocation,
     GeofenceMode GeofenceMode,
     int DefaultGeofenceRadiusMeters,
     WorkSiteGeofenceReference? WorkSite);
@@ -26,6 +27,18 @@ public sealed record WorkSiteGeofenceReference(
     decimal? Latitude,
     decimal? Longitude,
     int? GeofenceRadiusMeters);
+
+public sealed record GeofenceSettingsDto(
+    bool RequireGeolocation,
+    GeofenceMode GeofenceMode,
+    int DefaultGeofenceRadiusMeters,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc);
+
+public sealed record UpdateGeofenceSettingsRequest(
+    bool RequireGeolocation,
+    GeofenceMode GeofenceMode,
+    int DefaultGeofenceRadiusMeters);
 
 public enum GeolocationError
 {
