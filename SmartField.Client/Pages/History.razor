@@ -100,6 +100,11 @@
                                     </div>
                                 </div>
 
+                                <div class="history-detail__section">
+                                    <h2>Locais de trabalho</h2>
+                                    <p class="muted">@FormatDayWorkSites(_detail.Events)</p>
+                                </div>
+
                                 @if (_detail.Breaks.Count > 0)
                                 {
                                     <div class="history-detail__section">
@@ -128,7 +133,10 @@
                                             <li>
                                                 <div>
                                                     <strong>@GetEventLabel(attendanceEvent.EventType)</strong>
-                                                    <span>@FormatTime(attendanceEvent.ServerTimestampUtc)</span>
+                                                    <span>
+                                                        @FormatTime(attendanceEvent.ServerTimestampUtc)
+                                                        · @FormatWorkSite(attendanceEvent.WorkSiteId)
+                                                    </span>
                                                 </div>
                                                 @if (attendanceEvent.IsInsideGeofence == false)
                                                 {
@@ -151,6 +159,7 @@
     private static readonly CultureInfo PortugueseCulture = new("pt-PT");
 
     private IReadOnlyList<AttendanceHistoryDayDto> _days = [];
+    private IReadOnlyList<AttendanceWorkSiteOptionDto> _workSites = [];
     private AttendanceDayDetailDto? _detail;
     private string? _selectedDate;
     private string? _errorMessage;
@@ -161,6 +170,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadHistoryAsync();
+        await LoadWorkSitesAsync();
     }
 
     private async Task LoadHistoryAsync()
@@ -187,6 +197,20 @@
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private async Task LoadWorkSitesAsync()
+    {
+        try
+        {
+            _workSites = await AttendanceApiClient.GetPunchWorkSitesAsync(
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+            when (exception is AttendanceApiException or HttpRequestException or TaskCanceledException)
+        {
+            _workSites = [];
         }
     }
 
@@ -260,6 +284,32 @@
     {
         var noun = count == 1 ? "pausa" : "pausas";
         return $"{count} {noun} · {FormatDuration(minutes)}";
+    }
+
+    private string FormatWorkSite(Guid? workSiteId)
+    {
+        if (!workSiteId.HasValue)
+        {
+            return "Sem local";
+        }
+
+        var workSite = _workSites.FirstOrDefault(item => item.Id == workSiteId.Value);
+        return workSite is null
+            ? "Local indisponível"
+            : $"{workSite.Code} - {workSite.Name}";
+    }
+
+    private string FormatDayWorkSites(IReadOnlyList<AttendanceHistoryEventDto> events)
+    {
+        var labels = events
+            .Select(attendanceEvent => FormatWorkSite(attendanceEvent.WorkSiteId))
+            .Where(label => label != "Sem local")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return labels.Length == 0
+            ? "Sem local de trabalho registado."
+            : string.Join(" · ", labels);
     }
 
     private static string GetEventLabel(string eventType)
