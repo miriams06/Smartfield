@@ -23,11 +23,14 @@ public sealed class AttendanceProjectsController : ControllerBase
         var result = await projectService.SearchAsync(null, cancellationToken);
         if (!result.IsSuccess)
         {
-            return result.Error == ProjectError.CompanyUnavailable
-                ? Forbid()
-                : Problem(
-                    statusCode: StatusCodes.Status500InternalServerError,
-                    title: "Não foi possível carregar as obras disponíveis.");
+            if (result.Error == ProjectError.CompanyUnavailable)
+            {
+                return Forbid();
+            }
+
+            return Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Não foi possível carregar as obras disponíveis.");
         }
 
         var projects = result.Value!
