@@ -55,7 +55,8 @@ public sealed record UpdateEmployeeRequest(
 
 public sealed record CreateEmployeeUserRequest(
     string Email,
-    string Password);
+    string Password,
+    string? Role);
 
 public sealed class EmployeeEditorModel
 {
@@ -139,11 +140,15 @@ public sealed class EmployeeUserEditorModel
     [MinLength(6, ErrorMessage = "A password deve ter pelo menos 6 caracteres.")]
     public string Password { get; set; } = string.Empty;
 
+    [Required(ErrorMessage = "O perfil é obrigatório.")]
+    public string Role { get; set; } = "Employee";
+
     public CreateEmployeeUserRequest ToRequest()
     {
         return new CreateEmployeeUserRequest(
             Email,
-            Password);
+            Password,
+            Role);
     }
 }
 
