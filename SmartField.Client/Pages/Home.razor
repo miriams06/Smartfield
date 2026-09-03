@@ -43,19 +43,19 @@
                 </div>
 
                 <div class="state-panel">
-                    <label for="attendance-project">Obra</label>
-                    <select id="attendance-project"
+                    <label for="attendance-worksite">Local de trabalho</label>
+                    <select id="attendance-worksite"
                             class="form-select"
-                            @bind="_selectedProjectId"
+                            @bind="_selectedWorkSiteId"
                             disabled="@_submitting">
-                        <option value="">Sem obra selecionada</option>
-                        @foreach (var project in _projects)
+                        <option value="">Sem local selecionado</option>
+                        @foreach (var workSite in _workSites)
                         {
-                            <option value="@project.Id">@FormatProject(project)</option>
+                            <option value="@workSite.Id">@FormatWorkSite(workSite)</option>
                         }
                     </select>
                     <small>
-                        Se não selecionares uma obra, será usado o teu local de trabalho habitual quando existir.
+                        Seleciona o local onde estás a trabalhar. Se existir um local habitual, ele é selecionado automaticamente.
                     </small>
                 </div>
 
@@ -128,8 +128,9 @@
     private static readonly CultureInfo PortugueseCulture = new("pt-PT");
 
     private AttendanceStateDto? _state;
-    private IReadOnlyList<AttendanceProjectOptionDto> _projects = [];
-    private Guid? _selectedProjectId;
+    private IReadOnlyList<AttendanceWorkSiteOptionDto> _workSites = [];
+    private Guid? _selectedWorkSiteId;
+    private Guid? _defaultWorkSiteId;
     private Timer? _clockTimer;
     private bool _isLoading;
     private bool _submitting;
@@ -141,7 +142,7 @@
     protected override async Task OnInitializedAsync()
     {
         await RefreshStateAsync();
-        await LoadProjectsAsync();
+        await LoadWorkSitesAsync();
 
         _clockTimer = new Timer(
             _ => _ = InvokeAsync(StateHasChanged),
@@ -177,24 +178,33 @@
         }
     }
 
-    private async Task LoadProjectsAsync()
+    private async Task LoadWorkSitesAsync()
     {
         try
         {
-            _projects = await AttendanceApiClient.GetPunchProjectsAsync(
+            _workSites = await AttendanceApiClient.GetPunchWorkSitesAsync(
                 CancellationToken.None);
+
+            var defaultWorkSite = _workSites.FirstOrDefault(workSite => workSite.IsDefault);
+            if (defaultWorkSite is not null)
+            {
+                _defaultWorkSiteId = defaultWorkSite.Id;
+                _selectedWorkSiteId = defaultWorkSite.Id;
+                AddWarning(
+                    $"Foi selecionado por defeito o teu local de trabalho habitual: {FormatWorkSite(defaultWorkSite)}.");
+            }
         }
         catch (AttendanceApiException exception)
         {
-            AddWarning($"Não foi possível carregar as obras disponíveis: {exception.Message}");
+            AddWarning($"Não foi possível carregar os locais de trabalho: {exception.Message}");
         }
         catch (HttpRequestException)
         {
-            AddWarning("Não foi possível carregar as obras disponíveis.");
+            AddWarning("Não foi possível carregar os locais de trabalho disponíveis.");
         }
         catch (TaskCanceledException)
         {
-            AddWarning("O carregamento das obras foi cancelado.");
+            AddWarning("O carregamento dos locais de trabalho foi cancelado.");
         }
     }
 
@@ -213,8 +223,8 @@
 
         try
         {
-            var selectedProject = _selectedProjectId.HasValue
-                ? _projects.FirstOrDefault(project => project.Id == _selectedProjectId.Value)
+            var selectedWorkSite = _selectedWorkSiteId.HasValue
+                ? _workSites.FirstOrDefault(workSite => workSite.Id == _selectedWorkSiteId.Value)
                 : null;
 
             var position = await BrowserGeolocationService.GetCurrentPositionAsync(
@@ -232,8 +242,8 @@
                 position.IsSuccess ? position.Latitude : null,
                 position.IsSuccess ? position.Longitude : null,
                 position.IsSuccess ? position.AccuracyMeters : null,
-                null,
-                selectedProject?.Id);
+                selectedWorkSite?.Id,
+                null);
 
             var result = await AttendanceApiClient.PunchAsync(
                 request,
@@ -242,23 +252,28 @@
             var duplicateSuffix = result.IsDuplicate
                 ? " Este pedido já tinha sido registado."
                 : string.Empty;
-            var projectSuffix = selectedProject is null
+            var workSiteSuffix = selectedWorkSite is null
                 ? string.Empty
-                : $" Obra: {FormatProject(selectedProject)}.";
+                : $" Local: {FormatWorkSite(selectedWorkSite)}.";
 
             _successMessage =
-                $"{action.CompletedMessage} às {result.ServerTimestampUtc.ToLocalTime():HH:mm}.{projectSuffix}{duplicateSuffix}";
+                $"{action.CompletedMessage} às {result.ServerTimestampUtc.ToLocalTime():HH:mm}.{workSiteSuffix}{duplicateSuffix}";
 
-            if (selectedProject is null && result.WorkSiteId.HasValue)
+            if (selectedWorkSite?.Id == _defaultWorkSiteId)
             {
                 AddWarning(
-                    "Não selecionaste uma obra. Foi usado o teu local de trabalho habitual por defeito.");
+                    "A picagem está a usar o teu local de trabalho habitual, selecionado por defeito.");
+            }
+            else if (selectedWorkSite is null && result.WorkSiteId.HasValue)
+            {
+                AddWarning(
+                    "Não selecionaste um local. Foi usado o teu local de trabalho habitual por defeito.");
             }
 
             if (result.IsInsideGeofence == false)
             {
                 AddWarning(result.DistanceFromWorkSiteMeters.HasValue
-                    ? $"A picagem ficou registada, mas estás fora do raio permitido do local associado. Distância: {result.DistanceFromWorkSiteMeters.Value:0} m."
+                    ? $"A picagem ficou registada, mas estás fora do raio permitido deste local. Distância: {result.DistanceFromWorkSiteMeters.Value:0} m."
                     : "A picagem ficou registada, mas não foi possível validar a geofence do local de trabalho.");
             }
 
@@ -404,13 +419,11 @@
             : "Hoje";
     }
 
-    private static string FormatProject(AttendanceProjectOptionDto project)
+    private static string FormatWorkSite(AttendanceWorkSiteOptionDto workSite)
     {
-        var local = string.IsNullOrWhiteSpace(project.WorkSiteName)
-            ? "sem local associado"
-            : project.WorkSiteName;
-
-        return $"{project.Code} - {project.Name} ({local})";
+        return string.IsNullOrWhiteSpace(workSite.Code)
+            ? workSite.Name
+            : $"{workSite.Code} - {workSite.Name}";
     }
 
     private static string GetFirstName(string name)
