@@ -86,7 +86,7 @@ Os locais inativos não podem ser utilizados para validar novas picagens.
 
 ### Backoffice de assiduidade
 
-Utilizadores `Admin` e `Manager` podem consultar a assiduidade diária das equipas.
+Utilizadores com a role `Admin` podem consultar a assiduidade diária das equipas.
 
 A área de backoffice permite:
 
@@ -267,8 +267,10 @@ A solução utiliza:
 
 - ASP.NET Core Identity;
 - autenticação JWT Bearer;
-- roles `Admin`, `Manager` e `Employee`;
-- policy `Backoffice` para `Admin` e `Manager`.
+- roles atualmente utilizadas `Admin` e `Employee`;
+- policy `Backoffice` para proteger a área administrativa.
+
+A role `Manager` existe na configuração técnica da solução, mas atualmente não existe um fluxo na aplicação para a atribuir a utilizadores e não é um perfil utilizado no funcionamento atual.
 
 O acesso aos dados de negócio é restringido à empresa autenticada.
 
@@ -313,7 +315,7 @@ Contém controllers, autenticação e autorização, configuração de JWT, Swag
 
 ### SmartField.Client
 
-É uma aplicação Blazor WebAssembly PWA com área móvel para `Employee` e área de backoffice para `Admin` e `Manager`.
+É uma aplicação Blazor WebAssembly PWA com área móvel para `Employee` e área de backoffice para `Admin`.
 
 O Client comunica apenas com a API.
 
