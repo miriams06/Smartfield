@@ -26,6 +26,18 @@ public sealed class AttendanceApiClient
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<AttendanceProjectOptionDto>> GetPunchProjectsAsync(
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(
+            "api/attendance/projects",
+            cancellationToken);
+
+        return await ReadRequiredAsync<List<AttendanceProjectOptionDto>>(
+            response,
+            cancellationToken);
+    }
+
     public async Task<IReadOnlyList<AttendanceHistoryDayDto>> GetHistoryAsync(
         CancellationToken cancellationToken)
     {
