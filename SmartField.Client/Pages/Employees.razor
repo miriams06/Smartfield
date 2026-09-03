@@ -226,6 +226,16 @@
                                         <small>Mínimo 6 caracteres, com maiúscula, minúscula, número e símbolo.</small>
                                         <ValidationMessage For="@(() => userEditor.Password)" />
                                     </label>
+
+                                    <label>
+                                        Perfil
+                                        <InputSelect class="form-control" @bind-Value="userEditor.Role">
+                                            <option value="Employee">Funcionário</option>
+                                            <option value="Manager">Gestor</option>
+                                        </InputSelect>
+                                        <small>O Gestor tem acesso ao backoffice. O Funcionário utiliza a área móvel.</small>
+                                        <ValidationMessage For="@(() => userEditor.Role)" />
+                                    </label>
                                 </div>
 
                                 <button class="btn btn-primary employee-login-action"
@@ -442,6 +452,7 @@
 
         try
         {
+            var selectedRole = userEditor.Role;
             var updatedEmployee = await EmployeeApiClient.CreateUserAsync(
                 editor.Id.Value,
                 userEditor.ToRequest(),
@@ -452,7 +463,9 @@
             options = await EmployeeApiClient.GetOptionsAsync(
                 editor.Id,
                 CancellationToken.None);
-            successMessage = "Conta de login criada e associada ao funcionário.";
+            successMessage = selectedRole == "Manager"
+                ? "Conta de Gestor criada e associada ao funcionário."
+                : "Conta de Funcionário criada e associada ao funcionário.";
             await LoadEmployeesAsync();
         }
         catch (EmployeeApiException exception)
