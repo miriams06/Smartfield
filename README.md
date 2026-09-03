@@ -2,76 +2,279 @@
 
 Sysprime SmartField é uma aplicação para controlo de assiduidade e gestão de equipas no terreno.
 
-O princípio do produto é:
+A solução separa a utilização móvel dos funcionários da área de backoffice e mantém a lógica de negócio e validações no servidor.
 
-> Registar no terreno, validar no backoffice e integrar com o PRIMAVERA.
+> Registar no terreno, validar no backoffice e preparar a integração com o PRIMAVERA.
 
-A aplicação funciona primeiro em modo standalone, mas a arquitetura está preparada para evoluir para gestão de obras, intervenções, ordens de trabalho, equipas, centros de custo, tempos por obra, materiais, despesas, deslocações e integração com PRIMAVERA ERP.
+## Funcionalidades atuais
 
-## Estado funcional atual
+### Área móvel do funcionário
 
-A solução já inclui:
+O funcionário autenticado pode:
 
-- arquitetura por camadas;
-- ASP.NET Core Web API;
-- Blazor WebAssembly PWA;
-- Entity Framework Core com SQL Server;
-- migrations e seed de dados de demonstração;
+- consultar o estado atual da jornada;
+- selecionar o local de trabalho onde se encontra;
+- usar automaticamente o local habitual quando existe um `DefaultWorkSiteId`;
+- receber um aviso quando o local habitual é aplicado por defeito;
+- registar entrada, início de pausa, fim de pausa e saída;
+- enviar a localização atual no momento da picagem;
+- receber feedback quando a localização está fora da geofence;
+- consultar o histórico diário de assiduidade;
+- consultar entrada, saída, pausas e tempo trabalhado;
+- consultar os locais de trabalho utilizados em cada dia;
+- consultar o local associado a cada picagem;
+- ver avisos de picagens fora da geofence.
+
+A aplicação não faz tracking contínuo. A localização é pedida apenas quando uma operação necessita dela.
+
+### Assiduidade
+
+A assiduidade é baseada em eventos (`AttendanceEvent`) e preserva os registos originais.
+
+Os eventos suportados são:
+
+- `ClockIn`;
+- `BreakStart`;
+- `BreakEnd`;
+- `ClockOut`.
+
+A aplicação valida a sequência das picagens e calcula:
+
+- hora de entrada;
+- hora de saída;
+- duração das pausas;
+- número de pausas;
+- minutos trabalhados;
+- estado atual do funcionário.
+
+Cada evento pode guardar:
+
+- timestamp do servidor;
+- timestamp enviado pelo cliente;
+- latitude;
+- longitude;
+- precisão da localização;
+- local de trabalho;
+- projeto, quando aplicável;
+- resultado da geofence;
+- distância ao local de trabalho.
+
+### Geolocalização e geofence
+
+Os locais de trabalho (`WorkSite`) podem ter:
+
+- código;
+- nome;
+- morada;
+- latitude;
+- longitude;
+- raio de geofence;
+- estado ativo/inativo;
+- código de centro de custo ERP.
+
+A distância entre a localização do funcionário e o local de trabalho é calculada no servidor através da fórmula de Haversine.
+
+Existem três modos de geofence:
+
+- `Disabled`: a geofence não bloqueia a operação;
+- `Warning`: a picagem é aceite, mas fica assinalada quando está fora do raio;
+- `Block`: a picagem é rejeitada quando não cumpre as regras configuradas.
+
+O raio definido no próprio `WorkSite` tem precedência sobre o raio por defeito da empresa.
+
+Os locais inativos não podem ser utilizados para validar novas picagens.
+
+### Backoffice de assiduidade
+
+Utilizadores `Admin` e `Manager` podem consultar a assiduidade diária das equipas.
+
+A área de backoffice permite:
+
+- filtrar por data;
+- filtrar por funcionário;
+- filtrar por local de trabalho;
+- consultar entrada e saída;
+- consultar total diário;
+- consultar pausas;
+- consultar estado atual;
+- identificar dias com eventos fora da geofence;
+- abrir o detalhe de um funcionário;
+- consultar os eventos originais;
+- consultar o local associado a cada evento;
+- corrigir eventos de assiduidade sem apagar o evento original.
+
+### Correções de assiduidade
+
+Uma correção administrativa não altera nem elimina o `AttendanceEvent` original.
+
+A aplicação guarda uma correção separada com:
+
+- evento original;
+- tipo original;
+- timestamp original;
+- novo tipo;
+- novo timestamp;
+- motivo;
+- utilizador que efetuou a correção;
+- data da correção.
+
+Os cálculos e exportações podem aplicar a correção mais recente sem destruir o histórico original.
+
+### Exportação CSV
+
+O backoffice permite exportar assiduidade para CSV por período, com filtros opcionais por funcionário e local de trabalho.
+
+O ficheiro inclui:
+
+- `Date`;
+- `EmployeeNumber`;
+- `EmployeeName`;
+- `ClockIn`;
+- `ClockOut`;
+- `BreakMinutes`;
+- `WorkedMinutes`;
+- `WorkSite`;
+- `ProjectCode`;
+- `GeofenceStatus`.
+
+A exportação aplica as correções de assiduidade existentes.
+
+### Gestão de funcionários
+
+O backoffice permite:
+
+- listar funcionários;
+- pesquisar;
+- criar;
+- editar;
+- ativar e desativar;
+- definir o local de trabalho habitual;
+- associar um utilizador existente;
+- criar uma conta de login para um funcionário;
+- atribuir automaticamente a role `Employee` à conta criada;
+- guardar o código de funcionário do ERP.
+
+### Gestão de locais de trabalho
+
+O backoffice permite:
+
+- listar locais;
+- pesquisar;
+- criar;
+- editar;
+- ativar e desativar;
+- configurar coordenadas;
+- configurar raio de geofence;
+- configurar o código de centro de custo do ERP.
+
+Também é possível configurar as regras gerais de geolocalização da empresa, incluindo:
+
+- obrigatoriedade de localização;
+- modo de geofence;
+- raio por defeito.
+
+### Gestão de projetos
+
+O backoffice permite:
+
+- listar projetos;
+- pesquisar;
+- criar;
+- editar;
+- definir tipo e estado;
+- associar cliente;
+- associar um local de trabalho;
+- definir datas;
+- guardar referências para integração ERP.
+
+Os projetos e os locais de trabalho são conceitos distintos. A validação de geofence é feita sobre o `WorkSite` selecionado na picagem.
+
+### Auditoria
+
+A aplicação mantém registos de auditoria para operações relevantes.
+
+Um `AuditLog` pode guardar:
+
+- empresa;
+- utilizador;
+- tipo de entidade;
+- identificador da entidade;
+- ação;
+- valores anteriores;
+- valores novos;
+- timestamp UTC.
+
+São auditadas, entre outras, operações como:
+
+- login administrativo;
+- criação e alteração de funcionários;
+- criação e alteração de locais de trabalho;
+- criação de projetos;
+- criação de eventos de assiduidade;
+- correções de assiduidade.
+
+A consulta administrativa está disponível através de:
+
+```text
+GET /api/admin/audit
+```
+
+### Integração e Outbox
+
+A solução contém uma `IntegrationOutbox` para registar eventos destinados a sistemas externos sem tornar o funcionamento normal da aplicação dependente da disponibilidade desses sistemas.
+
+Existem tipos de evento como:
+
+- `AttendanceCreated`;
+- `AttendanceCorrected`;
+- `EmployeeCreated`;
+- `EmployeeUpdated`;
+- `ProjectCreated`.
+
+A integração com PRIMAVERA está isolada no projeto `SmartField.Integrations.Primavera`.
+
+Estão definidos contratos e DTOs para operações como:
+
+- testar ligação;
+- obter funcionários;
+- obter um funcionário;
+- obter projetos;
+- obter centros de custo;
+- enviar assiduidade.
+
+A implementação atualmente registada é `NotConfiguredPrimaveraClient`. Isto significa que a arquitetura está preparada para a integração, mas não existe ainda comunicação real com um ERP PRIMAVERA.
+
+### Logging e tratamento de erros
+
+A API utiliza Serilog para logging em:
+
+- consola;
+- ficheiros diários em `logs/`.
+
+Os ficheiros de log têm retenção limitada.
+
+Cada pedido pode transportar um `CorrelationId`, utilizado também no logging e nas respostas de erro inesperado.
+
+Existe middleware global para exceções não tratadas. Em vez de expor detalhes internos ao cliente, a API devolve `ProblemDetails` com um identificador de correlação que pode ser usado para localizar o erro nos logs.
+
+### Multiempresa e segurança
+
+A aplicação suporta isolamento por empresa através de `CompanyId`.
+
+O `CompanyId` é obtido a partir da identidade autenticada. O browser não decide a empresa sobre a qual um pedido é executado.
+
+A solução utiliza:
+
 - ASP.NET Core Identity;
-- autenticação JWT;
+- autenticação JWT Bearer;
 - roles `Admin`, `Manager` e `Employee`;
-- isolamento multiempresa por `CompanyId`;
-- área móvel e área de backoffice;
-- health check da API e do SQL Server;
-- gestão de funcionários no backoffice:
-  - listagem;
-  - pesquisa;
-  - criação;
-  - edição;
-  - ativação e desativação;
-  - associação a utilizador;
-  - associação a local habitual;
-  - código de funcionário no ERP;
-- gestão de locais de trabalho no backoffice:
-  - listagem;
-  - pesquisa;
-  - criação;
-  - edição;
-  - ativação e desativação;
-  - coordenadas de latitude e longitude;
-  - raio de geofence;
-  - código de centro de custo ERP;
-- serviço de geolocalização:
-  - integração com a Browser Geolocation API;
-  - recolha pontual de latitude, longitude e precisão;
-  - validação de permissões e indisponibilidade de localização;
-  - cálculo de distância ao local de trabalho através de Haversine;
-  - modos de geofence `Disabled`, `Warning` e `Block`;
-  - validação sempre no servidor e no contexto da empresa autenticada.
+- policy `Backoffice` para `Admin` e `Manager`.
 
-Ainda não devem ser consideradas implementadas funcionalidades como:
+O acesso aos dados de negócio é restringido à empresa autenticada.
 
-- registo real de picagens;
-- pausas e retomas;
-- correções de assiduidade pelo backoffice;
-- gestão de obras e intervenções;
-- integração efetiva com PRIMAVERA;
-- sincronização offline de eventos de negócio.
+## Arquitetura
 
-As entidades e abstrações existentes para estas áreas representam a fundação do produto, não necessariamente fluxos funcionais completos.
-
-## Stack
-
-- .NET 8
-- ASP.NET Core Web API
-- Blazor WebAssembly PWA
-- Entity Framework Core 8
-- SQL Server
-- ASP.NET Core Identity
-- JWT
-- xUnit
-
-## Estrutura da solução
+A solução está dividida em projetos com responsabilidades distintas:
 
 ```text
 Smartfield.sln
@@ -84,57 +287,70 @@ Smartfield.sln
 ├── SmartField.Domain.Tests
 ├── SmartField.Application.Tests
 ├── SmartField.Infrastructure.Tests
-└── SmartField.Api.Tests
+├── SmartField.Api.Tests
+└── SmartField.Integrations.Primavera.Tests
 ```
 
-### Responsabilidades dos projetos
+### SmartField.Domain
 
-- `SmartField.Domain`: entidades, enums e regras de domínio. Não depende de EF Core, Infrastructure, Blazor ou PRIMAVERA.
-- `SmartField.Application`: casos de uso, contratos e regras de aplicação. Depende apenas de `SmartField.Domain`.
-- `SmartField.Infrastructure`: persistência, EF Core, Identity, auditoria e outbox. Implementa contratos da Application.
-- `SmartField.Integrations.Primavera`: abstrações e implementação futura da integração PRIMAVERA.
-- `SmartField.Api`: composição da aplicação, autenticação, autorização, controllers e health checks.
-- `SmartField.Client`: Blazor WebAssembly PWA. Comunica apenas com `SmartField.Api`.
-- `*.Tests`: testes separados por camada.
+Contém entidades, enums e regras de domínio. Não depende de EF Core, Infrastructure, Blazor ou PRIMAVERA.
 
-## Regras arquiteturais essenciais
+### SmartField.Application
+
+Contém serviços de aplicação, contratos, regras de negócio e abstrações de persistência para áreas como assiduidade, geolocalização, auditoria, Integration Outbox, funcionários, projetos e locais de trabalho.
+
+### SmartField.Infrastructure
+
+Contém as implementações técnicas, incluindo Entity Framework Core, SQL Server, ASP.NET Core Identity, stores, persistência de auditoria, persistência de outbox e migrations.
+
+### SmartField.Integrations.Primavera
+
+Isola os contratos e implementações relacionados com PRIMAVERA. O Client e o Domain não dependem de DLLs do PRIMAVERA.
+
+### SmartField.Api
+
+Contém controllers, autenticação e autorização, configuração de JWT, Swagger, CORS, health checks, logging, tratamento global de erros e composição de dependências.
+
+### SmartField.Client
+
+É uma aplicação Blazor WebAssembly PWA com área móvel para `Employee` e área de backoffice para `Admin` e `Manager`.
+
+O Client comunica apenas com a API.
+
+## Stack
+
+- .NET 8
+- ASP.NET Core Web API
+- Blazor WebAssembly PWA
+- Entity Framework Core 8
+- SQL Server
+- ASP.NET Core Identity
+- JWT Bearer
+- Serilog
+- Swagger / OpenAPI
+- xUnit
+
+## Regras arquiteturais importantes
 
 - O Client comunica apenas com a API.
-- O frontend nunca comunica diretamente com PRIMAVERA.
-- Não devem ser usadas DLLs do PRIMAVERA no Client.
-- Lógica específica do PRIMAVERA não deve ser colocada diretamente nos Controllers.
-- Uma indisponibilidade do PRIMAVERA não pode impedir o funcionamento normal do SmartField.
-- Eventos destinados a sistemas externos devem utilizar `IntegrationOutbox`.
-- As entidades de negócio relevantes pertencem a uma `Company`.
-- O `CompanyId` é derivado da identidade autenticada e nunca deve ser confiado a partir do browser.
-- Datas persistidas usam UTC, salvo justificação explícita.
-- `AttendanceEvent` é um modelo baseado em eventos e preserva o histórico original.
-- Correções não devem apagar silenciosamente eventos de assiduidade.
-- Geolocalização só deve ser recolhida no momento da operação que a exige; não existe tracking contínuo ou em background.
-
-## Multiempresa e segurança
-
-O JWT inclui a empresa do utilizador autenticado. A API expõe essa informação através de `ICurrentCompanyProvider`, e o `SmartFieldDbContext` aplica filtros globais às entidades de negócio com `CompanyId`.
-
-Mesmo com filtros globais, os casos de uso e queries relevantes devem continuar a restringir explicitamente os dados à empresa autenticada.
-
-Nunca incluir no repositório:
-
-- passwords;
-- tokens;
-- API keys;
-- segredos JWT;
-- connection strings com credenciais reais;
-- certificados privados;
-- dados reais de clientes ou funcionários sem necessidade.
+- A validação de regras de negócio é feita no servidor.
+- O `CompanyId` não é confiado a partir do browser.
+- O frontend não comunica diretamente com PRIMAVERA.
+- Uma falha do PRIMAVERA não deve impedir o funcionamento normal do SmartField.
+- Integrações externas devem ser desacopladas através da `IntegrationOutbox` quando aplicável.
+- Datas persistidas usam UTC, salvo necessidade explícita em contrário.
+- `AttendanceEvent` é baseado em eventos e preserva o histórico original.
+- Correções de assiduidade não apagam silenciosamente eventos existentes.
+- A geolocalização é recolhida apenas no momento da operação necessária.
+- Não existe tracking contínuo ou em background.
 
 ## Pré-requisitos
 
 - .NET SDK 8
 - SQL Server ou SQL Server Express
-- ferramenta `dotnet-ef` 8, caso ainda não esteja instalada
+- `dotnet-ef` 8 para gerir migrations
 
-Instalação opcional do EF CLI:
+Instalação do EF CLI:
 
 ```powershell
 dotnet tool install --global dotnet-ef --version 8.0.23
@@ -142,30 +358,30 @@ dotnet tool install --global dotnet-ef --version 8.0.23
 
 ## Configuração local
 
-### 1. Clonar o repositório
+### Clonar o repositório
 
 ```powershell
 git clone https://github.com/miriams06/Smartfield.git
 cd Smartfield
 ```
 
-### 2. Configurar o SQL Server
+### Base de dados
 
-A configuração de desenvolvimento usa, por omissão:
+Em desenvolvimento, a configuração por omissão usa:
 
 ```text
 Server=.\SQLEXPRESS;Database=SmartFieldDb;Trusted_Connection=True;TrustServerCertificate=True
 ```
 
-Quando a instância local for diferente, definir a connection string através de user-secrets em vez de colocar credenciais no ficheiro de configuração:
+Para usar outra ligação, prefere `user-secrets`:
 
 ```powershell
 dotnet user-secrets set "ConnectionStrings:SmartField" "Server=.\SQLEXPRESS;Database=SmartFieldDb;Trusted_Connection=True;TrustServerCertificate=True" --project .\SmartField.Api
 ```
 
-### 3. Configurar o administrador de desenvolvimento
+### Administrador de desenvolvimento
 
-O seed de Identity só cria o administrador quando `Seed:AdminPassword` estiver definido e o ambiente for `Development`.
+O administrador de desenvolvimento só é criado quando `Seed:AdminPassword` está definido e o ambiente é `Development`.
 
 ```powershell
 dotnet user-secrets set "Seed:AdminPassword" "<password-local-segura>" --project .\SmartField.Api
@@ -178,16 +394,16 @@ Email: admin@smartfield.local
 Role: Admin
 ```
 
-A password nunca deve ser adicionada ao repositório.
+A password não deve ser adicionada ao repositório.
 
-### 4. Restaurar e compilar
+### Restaurar e compilar
 
 ```powershell
 dotnet restore .\Smartfield.sln --configfile .\NuGet.Config
 dotnet build .\Smartfield.sln --no-restore
 ```
 
-### 5. Aplicar as migrations
+### Aplicar migrations
 
 ```powershell
 dotnet ef database update `
@@ -196,32 +412,13 @@ dotnet ef database update `
   --context SmartFieldDbContext
 ```
 
-A base criada por omissão chama-se:
-
-```text
-SmartFieldDb
-```
-
-Dados de demonstração incluídos:
-
-```text
-Company: SYS-DEMO — SmartField Demo
-Employee: FUNC001 — Funcionário Demo
-```
-
-O administrador de desenvolvimento é criado pela API depois de as migrations estarem aplicadas e de `Seed:AdminPassword` estar configurado.
-
 ## Executar localmente
-
-Abrir dois terminais.
 
 ### API
 
 ```powershell
 dotnet run --project .\SmartField.Api --launch-profile https
 ```
-
-Endereços de desenvolvimento:
 
 ```text
 API:     https://localhost:7088
@@ -235,27 +432,15 @@ Health:  https://localhost:7088/health
 dotnet run --project .\SmartField.Client --launch-profile https
 ```
 
-Endereço de desenvolvimento:
-
 ```text
 Client: https://localhost:7084
 ```
 
-O Client usa `SmartField.Client/wwwroot/appsettings.Development.json` para localizar a API. As origens permitidas são configuradas na secção `Cors:AllowedOrigins` da API.
+O Client usa `SmartField.Client/wwwroot/appsettings.Development.json` para localizar a API.
 
-## Autenticação e autorização
+As origens permitidas são configuradas em `Cors:AllowedOrigins` na API.
 
-Roles existentes:
-
-- `Admin`: acesso administrativo ao backoffice;
-- `Manager`: acesso operacional ao backoffice;
-- `Employee`: acesso à área móvel de terreno.
-
-A policy `Backoffice` permite acesso a `Admin` e `Manager`.
-
-Em desenvolvimento, quando não existe `Jwt:SigningKey`, a API gera uma chave aleatória ao arrancar. Consequentemente, tokens emitidos antes de um reinício da API deixam de ser válidos. Em produção, `Jwt:SigningKey` é obrigatório e deve ser fornecido por configuração segura.
-
-## Endpoints disponíveis
+## Endpoints principais
 
 ### Autenticação
 
@@ -272,7 +457,7 @@ GET /health
 
 ### Funcionários
 
-Protegidos pela policy `Backoffice`:
+Policy `Backoffice`:
 
 ```text
 GET  /api/employees?search=<texto>
@@ -280,11 +465,12 @@ GET  /api/employees/options?employeeId=<guid-opcional>
 GET  /api/employees/{id}
 POST /api/employees
 PUT  /api/employees/{id}
+POST /api/employees/{id}/user
 ```
 
 ### Locais de trabalho
 
-Protegidos pela policy `Backoffice`:
+Policy `Backoffice`:
 
 ```text
 GET  /api/worksites?search=<texto>
@@ -293,85 +479,106 @@ POST /api/worksites
 PUT  /api/worksites/{id}
 ```
 
-### Geolocalização
+Para o fluxo móvel de assiduidade:
 
-Requer utilizador autenticado:
+```text
+GET /api/attendance/worksites
+```
+
+### Projetos
+
+Policy `Backoffice`:
+
+```text
+GET  /api/projects?search=<texto>
+GET  /api/projects/{id}
+POST /api/projects
+PUT  /api/projects/{id}
+```
+
+### Geolocalização
 
 ```text
 POST /api/geolocation/validate
 ```
 
-Pedido:
+### Configuração de geofence
+
+Policy `Backoffice`:
+
+```text
+GET /api/geofence-settings
+PUT /api/geofence-settings
+```
+
+### Assiduidade do funcionário
+
+```text
+GET  /api/attendance/state
+GET  /api/attendance/today
+GET  /api/attendance/history
+GET  /api/attendance/day/{date}
+POST /api/attendance/punch
+```
+
+### Assiduidade de backoffice
+
+Policy `Backoffice`:
+
+```text
+GET  /api/attendance/admin/day
+GET  /api/attendance/admin/day/{date}/employees/{employeeId}
+POST /api/attendance/admin/events/{attendanceEventId}/corrections
+GET  /api/attendance/admin/export.csv
+```
+
+### Auditoria
+
+Policy `Backoffice`:
+
+```text
+GET /api/admin/audit
+```
+
+## Integração PRIMAVERA
+
+A configuração prevista encontra-se na secção:
 
 ```json
 {
-  "latitude": 38.722252,
-  "longitude": -9.139337,
-  "accuracyMeters": 10,
-  "workSiteId": "00000000-0000-0000-0000-000000000000"
+  "Primavera": {
+    "BaseUrl": "",
+    "Company": "",
+    "Username": "",
+    "Password": "",
+    "ApiKey": ""
+  }
 }
 ```
 
-O `workSiteId` deve ser o GUID real de um local de trabalho da empresa autenticada.
+A integração é considerada configurada quando existe `BaseUrl`, `Company` e uma das seguintes formas de autenticação:
 
-A resposta indica se a operação pode prosseguir, se a localização está dentro do raio e qual a distância calculada:
+- `ApiKey`; ou
+- `Username` + `Password`.
 
-```json
-{
-  "isAccepted": true,
-  "isInsideGeofence": true,
-  "distanceFromWorkSiteMeters": 12.34,
-  "geofenceMode": 1,
-  "resultCode": "InsideGeofence",
-  "message": "A localização está dentro do raio permitido."
-}
-```
+Credenciais reais devem ser fornecidas por configuração segura e nunca adicionadas ao repositório.
 
-A API nunca recebe `CompanyId` do Client para decidir a empresa. O contexto da empresa é obtido a partir do utilizador autenticado.
-
-## Geolocalização e geofence
-
-O Client usa `navigator.geolocation.getCurrentPosition`, através de um wrapper JavaScript em:
-
-```text
-SmartField.Client/wwwroot/js/smartfield-geolocation.js
-```
-
-O acesso à localização é pontual. Não existe `watchPosition`, tracking contínuo nem recolha em background.
-
-O serviço trata os estados:
-
-```text
-success
-permission-denied
-position-unavailable
-timeout
-unsupported
-unknown-error
-```
-
-A decisão de geofence é sempre feita no servidor. Os modos atuais são:
-
-- `Disabled`: não bloqueia a operação;
-- `Warning`: aceita, mas assinala localização fora do raio ou localização indisponível;
-- `Block`: rejeita quando a localização não cumpre a regra definida.
-
-A distância ao local de trabalho é calculada na Application através da fórmula de Haversine. O raio específico do `WorkSite`, quando definido, tem precedência sobre `CompanySettings.DefaultGeofenceRadiusMeters`.
-
-A persistência de `Latitude`, `Longitude`, `LocationAccuracyMeters`, `DistanceFromWorkSiteMeters` e `IsInsideGeofence` pertence ao momento em que o respetivo `AttendanceEvent` for criado. O endpoint isolado de validação não cria eventos nem registos paralelos de geolocalização.
+A implementação atual não efetua comunicação real com o ERP; quando a integração não está configurada, `NotConfiguredPrimaveraClient` devolve resultados controlados sem interromper o SmartField.
 
 ## PWA
 
-O Client contém:
+O Client inclui:
 
 - `manifest.webmanifest`;
-- ícones da aplicação;
+- ícones;
 - service worker de desenvolvimento;
 - service worker de publicação;
 - layout móvel;
 - layout de backoffice.
 
-O service worker publicado gere os assets estáticos da aplicação. A sincronização offline de eventos de negócio ainda não está implementada.
+O service worker publicado gere os assets estáticos da aplicação.
+
+A sincronização offline de eventos de negócio ainda não está implementada.
 
 ## Testes
 
@@ -381,23 +588,14 @@ Executar todos os testes:
 dotnet test .\Smartfield.sln --no-build --no-restore
 ```
 
-Ou executar por projeto:
+Ou por projeto:
 
 ```powershell
 dotnet test .\SmartField.Domain.Tests
 dotnet test .\SmartField.Application.Tests
 dotnet test .\SmartField.Infrastructure.Tests
 dotnet test .\SmartField.Api.Tests
-```
-
-Antes de integrar alterações:
-
-```powershell
-dotnet restore .\Smartfield.sln --configfile .\NuGet.Config
-dotnet build .\Smartfield.sln --no-restore
-dotnet test .\Smartfield.sln --no-build --no-restore
-git diff --check
-git status
+dotnet test .\SmartField.Integrations.Primavera.Tests
 ```
 
 ## Migrations
@@ -418,6 +616,15 @@ dotnet ef migrations add <NomeDaMigration> `
   --output-dir Persistence\Migrations
 ```
 
+Aplicar migrations:
+
+```powershell
+dotnet ef database update `
+  --project .\SmartField.Infrastructure `
+  --startup-project .\SmartField.Api `
+  --context SmartFieldDbContext
+```
+
 Listar migrations:
 
 ```powershell
@@ -427,120 +634,16 @@ dotnet ef migrations list `
   --context SmartFieldDbContext
 ```
 
-Não editar migrations já aplicadas em ambientes partilhados. Criar uma migration nova para alterações posteriores ao modelo.
+Não editar migrations que já tenham sido aplicadas em ambientes partilhados. Para alterações posteriores ao modelo, criar uma nova migration.
 
-## Fluxo de desenvolvimento
+## Segurança de configuração
 
-- Trabalhar um card de cada vez.
-- Criar uma branch pequena e focada.
-- Ler o card, descrição, checklist, dependências e critérios de conclusão antes de alterar código.
-- Inspecionar primeiro o estado real do repositório.
-- Não assumir que um card está implementado apenas porque existe no Planner.
-- Não assumir que uma funcionalidade não existe sem verificar o código.
-- Não fazer refactoring fora do scope do card.
-- Preservar alterações locais não relacionadas.
-- Executar build e testes antes de abrir ou concluir o pull request.
-- Registar melhorias fora de scope no backlog.
+Não incluir no repositório:
 
-Exemplo:
-
-```powershell
-git switch master
-git pull --ff-only
-git switch -c <nome-da-branch>
-```
-
-Depois da validação:
-
-```powershell
-git status
-git diff --check
-git push -u origin <nome-da-branch>
-```
-
-A integração em `master` deve ser feita através de pull request revisto.
-
-## Fonte de verdade
-
-O Microsoft Planner é a fonte oficial para:
-
-- cards;
-- backlog;
-- prioridades;
-- descrições;
-- checklists;
-- dependências;
-- critérios de conclusão.
-
-O repositório é a fonte oficial para:
-
-- estado real da implementação;
-- arquitetura existente;
-- nomes de ficheiros, classes e namespaces;
-- packages;
-- migrations;
-- contratos da API;
-- testes.
-
-Quando Planner e código divergirem, a diferença deve ser identificada sem destruir código funcional.
-
-## Checklist de passagem a outro programador
-
-Antes da passagem do projeto:
-
-1. confirmar que `master` contém apenas alterações validadas;
-2. executar restore, build e testes;
-3. confirmar as migrations aplicadas na base de desenvolvimento;
-4. partilhar os valores de configuração por um canal seguro, nunca pelo Git;
-5. confirmar os URLs locais da API e do Client;
-6. validar login, health check e funcionalidades já implementadas;
-7. explicar as regras de isolamento por empresa;
-8. explicar que a localização é recolhida apenas sob pedido e validada no servidor;
-9. entregar o Planner juntamente com o acesso ao repositório;
-10. listar decisões pendentes e dívida técnica fora do README, no backlog ou documentação apropriada.
-
-## Resolução de problemas frequentes
-
-### `Unable to locate a Local Database Runtime installation`
-
-A connection string está a apontar para LocalDB, mas o runtime não está instalado. Usar a instância real disponível no SQL Server, por exemplo `.\SQLEXPRESS`, através de user-secrets.
-
-### Erros `NU1100` ou `NU1603` durante o restore
-
-Usar o `NuGet.Config` existente na raiz:
-
-```powershell
-dotnet restore .\Smartfield.sln --configfile .\NuGet.Config --force --no-cache
-```
-
-Quando necessário, limpar o cache:
-
-```powershell
-dotnet nuget locals all --clear
-```
-
-### O administrador de desenvolvimento não existe
-
-Confirmar que:
-
-- as migrations foram aplicadas;
-- a API está em `Development`;
-- `Seed:AdminPassword` está configurado em user-secrets;
-- a API foi iniciada depois dessa configuração.
-
-### O Client não comunica com a API
-
-Confirmar:
-
-- URL em `SmartField.Client/wwwroot/appsettings.Development.json`;
-- API em execução;
-- certificado HTTPS de desenvolvimento aceite;
-- origem do Client incluída em `Cors:AllowedOrigins`.
-
-### A geolocalização devolve `permission-denied`
-
-Confirmar que o browser tem permissão de localização para a origem do Client e que a aplicação está a correr em HTTPS.
-
-### `POST /api/geolocation/validate` devolve `400`
-
-Confirmar que latitude e longitude são válidas e enviadas em conjunto, que `accuracyMeters` não é negativo e que `workSiteId`, quando enviado, é um GUID válido.
+- passwords;
+- tokens;
+- API keys;
+- segredos JWT;
+- connection strings com credenciais reais;
+- certificados privados;
+- dados reais de clientes ou funcionários sem necessidade.
