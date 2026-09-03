@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartField.Api.Authentication;
 using SmartField.Application.Attendance;
+using SmartField.Application.Projects;
 
 namespace SmartField.Api.Controllers;
 
@@ -12,13 +13,16 @@ namespace SmartField.Api.Controllers;
 public sealed class AttendanceController : ControllerBase
 {
     private readonly IAttendanceService attendanceService;
+    private readonly IProjectService projectService;
     private readonly ILogger<AttendanceController> logger;
 
     public AttendanceController(
         IAttendanceService attendanceService,
+        IProjectService projectService,
         ILogger<AttendanceController> logger)
     {
         this.attendanceService = attendanceService;
+        this.projectService = projectService;
         this.logger = logger;
     }
 
@@ -167,6 +171,45 @@ public sealed class AttendanceController : ControllerBase
         AttendancePunchRequest request,
         CancellationToken cancellationToken)
     {
+        if (request.ProjectId.HasValue)
+        {
+            var projectResult = await projectService.GetAsync(
+                request.ProjectId.Value,
+                cancellationToken);
+
+            if (!projectResult.IsSuccess || projectResult.Value is null)
+            {
+                return NotFound(new ProblemDetails
+                {
+                    Status = StatusCodes.Status404NotFound,
+                    Title = "Projeto não encontrado."
+                });
+            }
+
+            var project = projectResult.Value;
+            if (!string.Equals(project.Status, "Active", StringComparison.OrdinalIgnoreCase))
+            {
+                return Conflict(new ProblemDetails
+                {
+                    Status = StatusCodes.Status409Conflict,
+                    Title = "Projeto indisponível para picagem.",
+                    Detail = "Só é possível registar picagens em projetos ativos."
+                });
+            }
+
+            if (!project.WorkSiteId.HasValue)
+            {
+                return BadRequest(new ProblemDetails
+                {
+                    Status = StatusCodes.Status400BadRequest,
+                    Title = "Projeto sem local de trabalho.",
+                    Detail = "A obra selecionada não tem um local de trabalho associado para validar a geofence."
+                });
+            }
+
+            request = request with { WorkSiteId = project.WorkSiteId };
+        }
+
         var result = await attendanceService.PunchAsync(request, cancellationToken);
         if (!result.IsSuccess)
         {
