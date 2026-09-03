@@ -16,7 +16,9 @@ A aplicação utiliza três perfis:
 
 A policy `Backoffice` permite acesso a `Admin` e `Manager`.
 
-O administrador de desenvolvimento é criado através do seed da aplicação. Na gestão de funcionários, um `Admin` pode criar a conta de login associada ao funcionário e escolher entre os perfis `Employee` e `Manager`. A criação de contas `Manager` fica reservada a utilizadores `Admin`.
+O administrador de desenvolvimento é criado através do seed da aplicação. Na página de gestão de funcionários, depois de o funcionário estar criado e enquanto ainda não tiver uma conta associada, um `Admin` pode abrir a secção **Conta de utilizador**, definir email e password e escolher o perfil da conta entre `Employee` e `Manager`.
+
+Uma conta criada como `Employee` utiliza a área móvel de assiduidade. Uma conta criada como `Manager` tem acesso ao backoffice. A atribuição de `Manager` fica reservada a utilizadores `Admin`; este fluxo não permite criar novas contas `Admin`.
 
 ## Área móvel do funcionário
 
@@ -90,8 +92,9 @@ Permite:
 - ativar e desativar;
 - definir local habitual;
 - associar utilizadores;
-- criar uma conta de login para o funcionário;
-- escolher `Employee` ou `Manager` ao criar a conta;
+- criar uma conta de login para um funcionário que ainda não tenha conta associada;
+- escolher `Employee` ou `Manager` ao criar a conta de login;
+- reservar a criação de contas `Manager` a utilizadores `Admin`;
 - guardar o código de funcionário do ERP.
 
 ### Locais de trabalho
