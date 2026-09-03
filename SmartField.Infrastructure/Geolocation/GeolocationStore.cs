@@ -37,7 +37,8 @@ public sealed class GeolocationStore : IGeolocationStore
                 .AsNoTracking()
                 .Where(site =>
                     site.CompanyId == companyId
-                    && site.Id == workSiteId.Value)
+                    && site.Id == workSiteId.Value
+                    && site.IsActive)
                 .Select(site => new WorkSiteGeofenceReference(
                     site.Id,
                     site.Latitude,
