@@ -85,7 +85,10 @@ public sealed class EmployeesController : ControllerBase
         }
 
         var email = request.Email?.Trim();
-        var validationErrors = ValidateUserRequest(email, request.Password);
+        var role = string.IsNullOrWhiteSpace(request.Role)
+            ? SmartFieldRoles.Employee
+            : request.Role.Trim();
+        var validationErrors = ValidateUserRequest(email, request.Password, role);
         if (validationErrors.Count > 0)
         {
             return BadRequest(new ValidationProblemDetails(validationErrors)
@@ -93,6 +96,11 @@ public sealed class EmployeesController : ControllerBase
                 Status = StatusCodes.Status400BadRequest,
                 Title = "Os dados da conta de login não são válidos."
             });
+        }
+
+        if (role == SmartFieldRoles.Manager && !User.IsInRole(SmartFieldRoles.Admin))
+        {
+            return Forbid();
         }
 
         var existingUser = await userManager.FindByEmailAsync(email!);
@@ -128,7 +136,7 @@ public sealed class EmployeesController : ControllerBase
             });
         }
 
-        var roleResult = await userManager.AddToRoleAsync(user, SmartFieldRoles.Employee);
+        var roleResult = await userManager.AddToRoleAsync(user, role);
         if (!roleResult.Succeeded)
         {
             await userManager.DeleteAsync(user);
@@ -136,7 +144,7 @@ public sealed class EmployeesController : ControllerBase
                 MapIdentityErrors(roleResult.Errors))
             {
                 Status = StatusCodes.Status400BadRequest,
-                Title = "Não foi possível atribuir a role de funcionário."
+                Title = "Não foi possível atribuir o perfil à conta."
             });
         }
 
@@ -148,7 +156,7 @@ public sealed class EmployeesController : ControllerBase
             {
                 UserId = user.Id,
                 user.Email,
-                Role = SmartFieldRoles.Employee
+                Role = role
             }),
             cancellationToken);
 
@@ -265,7 +273,8 @@ public sealed class EmployeesController : ControllerBase
 
     private static Dictionary<string, string[]> ValidateUserRequest(
         string? email,
-        string? password)
+        string? password,
+        string role)
     {
         var errors = new Dictionary<string, string[]>();
 
@@ -279,6 +288,12 @@ public sealed class EmployeesController : ControllerBase
         {
             errors[nameof(CreateEmployeeUserRequest.Password)] =
                 ["A password é obrigatória."];
+        }
+
+        if (role != SmartFieldRoles.Employee && role != SmartFieldRoles.Manager)
+        {
+            errors[nameof(CreateEmployeeUserRequest.Role)] =
+                ["O perfil deve ser Employee ou Manager."];
         }
 
         return errors;
