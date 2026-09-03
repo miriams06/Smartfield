@@ -52,7 +52,8 @@ public sealed record UpdateEmployeeRequest(
 
 public sealed record CreateEmployeeUserRequest(
     string Email,
-    string Password);
+    string Password,
+    string? Role = null);
 
 public enum EmployeeError
 {
