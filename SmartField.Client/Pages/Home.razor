@@ -42,6 +42,23 @@
                     <strong>@_state.CurrentStateLabel</strong>
                 </div>
 
+                <div class="state-panel">
+                    <label for="attendance-project">Obra</label>
+                    <select id="attendance-project"
+                            class="form-select"
+                            @bind="_selectedProjectId"
+                            disabled="@_submitting">
+                        <option value="">Sem obra selecionada</option>
+                        @foreach (var project in _projects)
+                        {
+                            <option value="@project.Id">@FormatProject(project)</option>
+                        }
+                    </select>
+                    <small>
+                        Se não selecionares uma obra, será usado o teu local de trabalho habitual quando existir.
+                    </small>
+                </div>
+
                 <div class="metrics-grid">
                     <div>
                         <span>Entrada</span>
@@ -111,6 +128,8 @@
     private static readonly CultureInfo PortugueseCulture = new("pt-PT");
 
     private AttendanceStateDto? _state;
+    private IReadOnlyList<AttendanceProjectOptionDto> _projects = [];
+    private Guid? _selectedProjectId;
     private Timer? _clockTimer;
     private bool _isLoading;
     private bool _submitting;
@@ -122,6 +141,7 @@
     protected override async Task OnInitializedAsync()
     {
         await RefreshStateAsync();
+        await LoadProjectsAsync();
 
         _clockTimer = new Timer(
             _ => _ = InvokeAsync(StateHasChanged),
@@ -157,6 +177,27 @@
         }
     }
 
+    private async Task LoadProjectsAsync()
+    {
+        try
+        {
+            _projects = await AttendanceApiClient.GetPunchProjectsAsync(
+                CancellationToken.None);
+        }
+        catch (AttendanceApiException exception)
+        {
+            AddWarning($"Não foi possível carregar as obras disponíveis: {exception.Message}");
+        }
+        catch (HttpRequestException)
+        {
+            AddWarning("Não foi possível carregar as obras disponíveis.");
+        }
+        catch (TaskCanceledException)
+        {
+            AddWarning("O carregamento das obras foi cancelado.");
+        }
+    }
+
     private async Task PunchAsync(DashboardAction action)
     {
         if (_submitting)
@@ -172,12 +213,16 @@
 
         try
         {
+            var selectedProject = _selectedProjectId.HasValue
+                ? _projects.FirstOrDefault(project => project.Id == _selectedProjectId.Value)
+                : null;
+
             var position = await BrowserGeolocationService.GetCurrentPositionAsync(
                 CancellationToken.None);
 
             if (!position.IsSuccess)
             {
-                _warningMessage = GetLocationWarning(position.Status);
+                AddWarning(GetLocationWarning(position.Status));
             }
 
             var request = new AttendancePunchRequest(
@@ -188,7 +233,7 @@
                 position.IsSuccess ? position.Longitude : null,
                 position.IsSuccess ? position.AccuracyMeters : null,
                 null,
-                null);
+                selectedProject?.Id);
 
             var result = await AttendanceApiClient.PunchAsync(
                 request,
@@ -197,14 +242,24 @@
             var duplicateSuffix = result.IsDuplicate
                 ? " Este pedido já tinha sido registado."
                 : string.Empty;
+            var projectSuffix = selectedProject is null
+                ? string.Empty
+                : $" Obra: {FormatProject(selectedProject)}.";
 
             _successMessage =
-                $"{action.CompletedMessage} às {result.ServerTimestampUtc.ToLocalTime():HH:mm}.{duplicateSuffix}";
+                $"{action.CompletedMessage} às {result.ServerTimestampUtc.ToLocalTime():HH:mm}.{projectSuffix}{duplicateSuffix}";
+
+            if (selectedProject is null && result.WorkSiteId.HasValue)
+            {
+                AddWarning(
+                    "Não selecionaste uma obra. Foi usado o teu local de trabalho habitual por defeito.");
+            }
 
             if (result.IsInsideGeofence == false)
             {
-                _warningMessage =
-                    "A picagem ficou registada, mas a localização está fora do local de trabalho.";
+                AddWarning(result.DistanceFromWorkSiteMeters.HasValue
+                    ? $"A picagem ficou registada, mas estás fora do raio permitido do local associado. Distância: {result.DistanceFromWorkSiteMeters.Value:0} m."
+                    : "A picagem ficou registada, mas não foi possível validar a geofence do local de trabalho.");
             }
 
             await RefreshStateAsync();
@@ -226,6 +281,13 @@
             _submitting = false;
             _submittingAction = null;
         }
+    }
+
+    private void AddWarning(string message)
+    {
+        _warningMessage = string.IsNullOrWhiteSpace(_warningMessage)
+            ? message
+            : $"{_warningMessage} {message}";
     }
 
     private IReadOnlyList<DashboardAction> GetAvailableActions()
@@ -340,6 +402,15 @@
             ? date.ToDateTime(TimeOnly.MinValue)
                 .ToString("dddd, d 'de' MMMM", PortugueseCulture)
             : "Hoje";
+    }
+
+    private static string FormatProject(AttendanceProjectOptionDto project)
+    {
+        var local = string.IsNullOrWhiteSpace(project.WorkSiteName)
+            ? "sem local associado"
+            : project.WorkSiteName;
+
+        return $"{project.Code} - {project.Name} ({local})";
     }
 
     private static string GetFirstName(string name)
