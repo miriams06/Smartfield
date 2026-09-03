@@ -28,6 +28,13 @@ public sealed record AttendancePunchDto(
     decimal? DistanceFromWorkSiteMeters,
     bool IsDuplicate);
 
+public sealed record AttendanceProjectOptionDto(
+    Guid Id,
+    string Code,
+    string Name,
+    Guid? WorkSiteId,
+    string? WorkSiteName);
+
 public sealed record AttendanceStateDto(
     Guid EmployeeId,
     string EmployeeName,
