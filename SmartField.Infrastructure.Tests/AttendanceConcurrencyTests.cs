@@ -12,17 +12,6 @@ using SmartField.Infrastructure.Persistence;
 
 namespace SmartField.Infrastructure.Tests;
 
-public sealed class SqlServerFactAttribute : FactAttribute
-{
-    public SqlServerFactAttribute()
-    {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SMARTFIELD_TEST_SQLSERVER")))
-        {
-            Skip = "Set SMARTFIELD_TEST_SQLSERVER to run SQL Server concurrency tests.";
-        }
-    }
-}
-
 public class AttendanceConcurrencyTests
 {
     private static readonly Guid CompanyId =
@@ -32,7 +21,8 @@ public class AttendanceConcurrencyTests
     private static readonly DateTimeOffset ServerNow =
         new(2026, 9, 7, 13, 30, 0, TimeSpan.Zero);
 
-    [SqlServerFact]
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
     public async Task ConcurrentClockIns_WithDifferentClientEventIds_PersistOnlyOne()
     {
         var connectionString = CreateConnectionString();
@@ -70,7 +60,8 @@ public class AttendanceConcurrencyTests
         }
     }
 
-    [SqlServerFact]
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
     public async Task ConcurrentClockOuts_WithDifferentClientEventIds_PersistOnlyOne()
     {
         var connectionString = CreateConnectionString();
@@ -109,7 +100,8 @@ public class AttendanceConcurrencyTests
         }
     }
 
-    [SqlServerFact]
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
     public async Task ConcurrentClockIns_WithSameClientEventId_RemainIdempotent()
     {
         var connectionString = CreateConnectionString();
@@ -255,7 +247,7 @@ public class AttendanceConcurrencyTests
     private static string CreateConnectionString()
     {
         var connection = new SqlConnectionStringBuilder(
-            Environment.GetEnvironmentVariable("SMARTFIELD_TEST_SQLSERVER"))
+            SqlServerIntegrationTestConfiguration.ConnectionString)
         {
             InitialCatalog = $"SmartField_AttendanceConcurrency_{Guid.NewGuid():N}"
         };

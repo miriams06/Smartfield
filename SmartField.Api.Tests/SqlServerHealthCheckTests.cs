@@ -6,11 +6,12 @@ namespace SmartField.Api.Tests;
 
 public class SqlServerHealthCheckTests
 {
-    [Fact]
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
     public async Task CheckHealthAsync_ReturnsHealthy_WhenSmartFieldDatabaseIsReachable()
     {
         var healthCheck = new SqlServerHealthCheck(CreateConfiguration(
-            "Server=.\\SQLEXPRESS;Database=SmartFieldDb;Trusted_Connection=True;TrustServerCertificate=True"));
+            SqlServerIntegrationTestConfiguration.ConnectionString));
 
         var result = await healthCheck.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
 

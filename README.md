@@ -356,8 +356,45 @@ A sincronização offline de eventos de negócio ainda não está implementada.
 
 ## Testes
 
+Os testes normais não necessitam de uma instância SQL Server:
+
 ```powershell
 dotnet test .\Smartfield.sln --no-build --no-restore
+```
+
+Os testes que abrem ligações reais estão marcados com `Category=Integration`. Quando
+`SMARTFIELD_TEST_CONNECTION_STRING` não está definida, são ignorados com uma mensagem
+clara e a suite normal continua a executar.
+
+Esta variável substitui `SMARTFIELD_TEST_SQLSERVER`, anteriormente utilizada pelos
+testes de concorrência e persistência. Sem configuração não é escolhida uma instância
+SQL automaticamente. Uma ligação configurada mas inválida faz os testes falharem.
+
+Para executar também os testes de integração SQL, definir uma ligação para uma base de
+testes acessível. Os testes de Infrastructure criam e removem bases descartáveis com
+nomes únicos, pelo que a ligação deve permitir essas operações.
+
+Exemplo com LocalDB em desenvolvimento:
+
+```powershell
+$env:SMARTFIELD_TEST_CONNECTION_STRING = "Server=(localdb)\MSSQLLocalDB;Database=master;Trusted_Connection=True;TrustServerCertificate=True"
+dotnet test .\Smartfield.sln --no-build --no-restore
+```
+
+Pode ser utilizada outra instância SQL Server através da mesma variável. Não guardar
+credenciais reais no repositório.
+
+Para executar apenas os testes de integração configurados:
+
+```powershell
+dotnet test .\Smartfield.sln --filter "Category=Integration" --no-build --no-restore
+```
+
+Para voltar a executar sem SQL e consultar as mensagens dos testes ignorados:
+
+```powershell
+Remove-Item Env:SMARTFIELD_TEST_CONNECTION_STRING -ErrorAction SilentlyContinue
+dotnet test .\Smartfield.sln --no-build --no-restore --logger "console;verbosity=normal"
 ```
 
 Ou por projeto:

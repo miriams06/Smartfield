@@ -8,24 +8,13 @@ using SmartField.Infrastructure.Persistence;
 
 namespace SmartField.Infrastructure.Tests;
 
-// Opt in with a SQL Server connection that permits creating a disposable database.
-public sealed class SqlServerTheoryAttribute : TheoryAttribute
-{
-    public SqlServerTheoryAttribute()
-    {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SMARTFIELD_TEST_SQLSERVER")))
-        {
-            Skip = "Set SMARTFIELD_TEST_SQLSERVER to run SQL Server persistence tests.";
-        }
-    }
-}
-
 public class ProjectPersistenceTests
 {
     private const string PreviousMigration = "20260828160138_AddIdentity";
     private static readonly Guid CompanyId = Guid.Parse("9f0b4a28-864b-4d2f-9ca6-44cf64352d68");
 
-    [SqlServerTheory]
+    [SqlServerIntegrationTheory]
+    [Trait("Category", "Integration")]
     [InlineData(ProjectType.Construction, ProjectStatus.Draft)]
     [InlineData(ProjectType.Maintenance, ProjectStatus.Active)]
     [InlineData(ProjectType.Intervention, ProjectStatus.Closed)]
@@ -35,7 +24,7 @@ public class ProjectPersistenceTests
         ProjectType projectType, ProjectStatus status)
     {
         var connection = new SqlConnectionStringBuilder(
-            Environment.GetEnvironmentVariable("SMARTFIELD_TEST_SQLSERVER"))
+            SqlServerIntegrationTestConfiguration.ConnectionString)
         {
             InitialCatalog = $"SmartField_ProjectEnums_{Guid.NewGuid():N}"
         };
