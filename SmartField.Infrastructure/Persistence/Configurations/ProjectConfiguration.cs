@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SmartField.Domain.Entities;
-using SmartField.Domain.Enums;
 
 namespace SmartField.Infrastructure.Persistence.Configurations;
 
@@ -24,13 +23,11 @@ public class ProjectConfiguration : IEntityTypeConfiguration<Project>
         builder.Property(project => project.ProjectType)
             .HasConversion<string>()
             .HasMaxLength(50)
-            .HasDefaultValue(ProjectType.Other)
             .IsRequired();
 
         builder.Property(project => project.Status)
             .HasConversion<string>()
             .HasMaxLength(50)
-            .HasDefaultValue(ProjectStatus.Draft)
             .IsRequired();
 
         builder.Property(project => project.CustomerName)

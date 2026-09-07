@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.AspNetCore.Identity;
 using SmartField.Domain.Entities;
 using SmartField.Infrastructure.Identity;
@@ -10,6 +11,33 @@ namespace SmartField.Infrastructure.Tests;
 
 public class SmartFieldDbContextModelTests
 {
+    [Theory]
+    [InlineData(nameof(Project.ProjectType))]
+    [InlineData(nameof(Project.Status))]
+    public void ProjectEnums_AreAlwaysWrittenWithoutDatabaseDefaults(string propertyName)
+    {
+        using var context = CreateContext();
+        var property = context.GetService<IDesignTimeModel>().Model
+            .FindEntityType(typeof(Project))!.FindProperty(propertyName)!;
+
+        Assert.False(property.TryGetDefaultValue(out _));
+        Assert.Equal(ValueGenerated.Never, property.ValueGenerated);
+        Assert.Equal(PropertySaveBehavior.Save, property.GetBeforeSaveBehavior());
+    }
+
+    [Fact]
+    public void Model_InitializesWithoutSentinelDefaultWarning()
+    {
+        var options = new DbContextOptionsBuilder<SmartFieldDbContext>()
+            .UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=SmartFieldDb_Tests;Trusted_Connection=True;TrustServerCertificate=True")
+            .EnableServiceProviderCaching(false)
+            .ConfigureWarnings(warnings => warnings.Throw(RelationalEventId.BoolWithDefaultWarning))
+            .Options;
+        using var context = new SmartFieldDbContext(options);
+
+        Assert.NotNull(context.Model);
+    }
+
     [Fact]
     public void DbContext_ExposesExpectedDbSets()
     {

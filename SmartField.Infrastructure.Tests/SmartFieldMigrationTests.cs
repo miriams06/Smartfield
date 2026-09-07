@@ -11,6 +11,54 @@ public class SmartFieldMigrationTests
 {
     private const string InitialMigrationId = "20260828123000_InitialCreate";
 
+    [Theory]
+    [InlineData("ProjectType", "Other")]
+    [InlineData("Status", "Draft")]
+    public void RemoveProjectEnumDefaults_RemovesDefaultsAndRestoresThemOnRollback(
+        string column, string originalDefault)
+    {
+        var migration = new RemoveProjectEnumDefaults();
+        Assert.Equal(2, migration.UpOperations.Count);
+        Assert.Equal(2, migration.DownOperations.Count);
+
+        var up = Assert.Single(migration.UpOperations.OfType<AlterColumnOperation>(),
+            operation => operation.Name == column);
+        Assert.Equal("Projects", up.Table);
+        Assert.Null(up.DefaultValue);
+        Assert.Equal(originalDefault, up.OldColumn.DefaultValue);
+        Assert.Equal("nvarchar(50)", up.ColumnType);
+        Assert.False(up.IsNullable);
+
+        var down = Assert.Single(migration.DownOperations.OfType<AlterColumnOperation>(),
+            operation => operation.Name == column);
+        Assert.Equal("Projects", down.Table);
+        Assert.Equal(originalDefault, down.DefaultValue);
+        Assert.Null(down.OldColumn.DefaultValue);
+    }
+
+    [Fact]
+    public void RemoveProjectEnumDefaults_GeneratesSqlToDropAndRestoreDefaultConstraints()
+    {
+        using var context = CreateContext();
+        var migrationId = Assert.Single(context.Database.GetMigrations(),
+            id => id.EndsWith("_RemoveProjectEnumDefaults", StringComparison.Ordinal));
+        var migrator = context.GetService<IMigrator>();
+        const string previousMigration = "20260828160138_AddIdentity";
+
+        var up = migrator.GenerateScript(previousMigration, migrationId);
+        Assert.Contains("[sys].[default_constraints]", up);
+        Assert.Contains("N'ProjectType'", up);
+        Assert.Contains("N'Status'", up);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(
+            up, @"ALTER TABLE \[Projects\] DROP CONSTRAINT").Count);
+        Assert.DoesNotContain("ADD DEFAULT", up);
+
+        var down = migrator.GenerateScript(migrationId, previousMigration);
+        Assert.Contains("ADD DEFAULT N'Other' FOR [ProjectType]", down);
+        Assert.Contains("ADD DEFAULT N'Draft' FOR [Status]", down);
+        Assert.False(context.Database.HasPendingModelChanges());
+    }
+
     [Fact]
     public void MigrationAssembly_ContainsInitialMigration()
     {
