@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddDbContext<SmartFieldDbContext>(options =>
             options.UseSqlServer(connectionString));
         services.AddScoped<IAttendanceStore, AttendanceStore>();
+        services.AddScoped<IAttendancePunchConcurrencyGate, SqlServerAttendancePunchConcurrencyGate>();
         services.AddScoped<IAuditStore, AuditStore>();
         services.AddScoped<IEmployeeStore, EmployeeStore>();
         services.AddScoped<IGeofenceSettingsStore, GeofenceSettingsStore>();
