@@ -182,17 +182,14 @@
         {
             _days = await AttendanceApiClient.GetHistoryAsync(CancellationToken.None);
         }
-        catch (AttendanceApiException exception)
+        catch (SmartFieldApiException exception)
         {
             _errorMessage = exception.Message;
         }
-        catch (HttpRequestException)
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
         {
-            _errorMessage = "Não foi possível comunicar com a API do SmartField.";
-        }
-        catch (TaskCanceledException)
-        {
-            _errorMessage = "O carregamento do histórico foi cancelado.";
+            _errorMessage = ClientHttpErrorMessages.FromException(exception);
         }
         finally
         {
@@ -208,7 +205,7 @@
                 CancellationToken.None);
         }
         catch (Exception exception)
-            when (exception is AttendanceApiException or HttpRequestException or TaskCanceledException)
+            when (exception is SmartFieldApiException or HttpRequestException or TaskCanceledException)
         {
             _workSites = [];
         }
@@ -235,17 +232,14 @@
                 day.Date,
                 CancellationToken.None);
         }
-        catch (AttendanceApiException exception)
+        catch (SmartFieldApiException exception)
         {
             _detailErrorMessage = exception.Message;
         }
-        catch (HttpRequestException)
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
         {
-            _detailErrorMessage = "Não foi possível carregar o detalhe deste dia.";
-        }
-        catch (TaskCanceledException)
-        {
-            _detailErrorMessage = "O carregamento do detalhe foi cancelado.";
+            _detailErrorMessage = ClientHttpErrorMessages.FromException(exception);
         }
         finally
         {
