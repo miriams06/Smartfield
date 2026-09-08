@@ -81,7 +81,7 @@ de edição para Manager/Admin; corrigir a hora de uma picagem não altera silen
 o texto nem a data do relatório. Dias antigos sem relatório mostram “Sem resumo submetido.”
 
 Antes de usar esta versão, aplicar a migration `AddDailyWorkReports` com o comando
-`dotnet ef database update` indicado abaixo. A migration não cria resumos para eventos antigos.
+`dotnet tool run dotnet-ef -- database update` indicado abaixo. A migration não cria resumos para eventos antigos.
 
 ## Geolocalização e geofence
 
@@ -228,13 +228,23 @@ O Client comunica apenas com a API. O frontend não comunica diretamente com PRI
 
 ## Pré-requisitos
 
-- .NET SDK 8
+- [.NET SDK 8.0.424](https://dotnet.microsoft.com/en-us/download/dotnet/8.0), na arquitetura da máquina
 - SQL Server ou SQL Server Express
-- `dotnet-ef` 8 para gerir migrations
+- `dotnet-ef` 8.0.23, restaurado como ferramenta local do repositório
 
 ```powershell
-dotnet tool install --global dotnet-ef --version 8.0.23
+dotnet tool restore
 ```
+
+O `global.json` exige exatamente o SDK `8.0.424` (`rollForward: disable`, sem versões
+preview). Instalar esse SDK antes de executar comandos no repositório; ter apenas o
+runtime .NET 8 ou um SDK 9/10 não é suficiente. Pode coexistir com outros SDKs.
+O `global.json` seleciona o SDK, mas não o instala automaticamente.
+
+Executar os comandos a partir da raiz do repositório. O manifest
+`.config/dotnet-tools.json` fixa `dotnet-ef` em `8.0.23`, alinhado com os packages EF
+Core da solução. Não é necessária instalação global. Para invocar explicitamente
+a ferramenta local, usar `dotnet tool run dotnet-ef -- <argumentos>`.
 
 ## Configuração local
 
@@ -320,14 +330,35 @@ com SQL real usam `SMARTFIELD_TEST_CONNECTION_STRING` e `Category=Integration`.
 ### Restaurar e compilar
 
 ```powershell
-dotnet restore .\Smartfield.sln --configfile .\NuGet.Config
-dotnet build .\Smartfield.sln --no-restore
+dotnet tool restore
+dotnet restore
+dotnet build
 ```
+
+O restauro utiliza o `NuGet.Config` versionado. Confirmar as versões selecionadas:
+
+```powershell
+dotnet --version                  # 8.0.424
+dotnet tool run dotnet-ef -- --version # 8.0.23
+```
+
+Depois de alterar a versão no manifest, repetir `dotnet tool restore`. Alterações
+do SDK devem atualizar `global.json` e esta documentação em conjunto.
 
 ### Aplicar migrations
 
+Depois do restauro e build, verificar as migrations e a correspondência do modelo
+com o snapshot sem abrir uma ligação SQL:
+
 ```powershell
-dotnet ef database update `
+dotnet tool run dotnet-ef -- migrations list --no-connect --project .\SmartField.Infrastructure --startup-project .\SmartField.Api --no-build -- --environment Development
+dotnet tool run dotnet-ef -- migrations has-pending-model-changes --project .\SmartField.Infrastructure --startup-project .\SmartField.Api --no-build -- --environment Development
+```
+
+Para aplicar as migrations à base configurada:
+
+```powershell
+dotnet tool run dotnet-ef -- database update `
   --project .\SmartField.Infrastructure `
   --startup-project .\SmartField.Api `
   --context SmartFieldDbContext
@@ -494,7 +525,7 @@ SmartField.Infrastructure/Persistence/Migrations
 Criar:
 
 ```powershell
-dotnet ef migrations add <NomeDaMigration> `
+dotnet tool run dotnet-ef -- migrations add <NomeDaMigration> `
   --project .\SmartField.Infrastructure `
   --startup-project .\SmartField.Api `
   --context SmartFieldDbContext `
@@ -504,7 +535,7 @@ dotnet ef migrations add <NomeDaMigration> `
 Aplicar:
 
 ```powershell
-dotnet ef database update `
+dotnet tool run dotnet-ef -- database update `
   --project .\SmartField.Infrastructure `
   --startup-project .\SmartField.Api `
   --context SmartFieldDbContext
