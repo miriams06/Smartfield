@@ -199,7 +199,13 @@ public class AttendanceConcurrencyTests
 
     [SqlServerIntegrationFact]
     [Trait("Category", "Integration")]
-    public async Task DailyReportFailure_RollsBackClockOutAuditAndOutbox()
+    public Task DailyReportFailure_RollsBackClockOutAuditAndOutbox() => AssertRollbackAsync(rejectReport: true);
+
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
+    public Task ClockOutFailure_DoesNotCreateReportAuditOrOutbox() => AssertRollbackAsync(rejectReport: false);
+
+    private static async Task AssertRollbackAsync(bool rejectReport)
     {
         var connection = CreateConnectionString();
         try
@@ -208,8 +214,11 @@ public class AttendanceConcurrencyTests
             await SeedClockInAsync(connection, employeeId);
             using (var db = CreateContext(connection))
             {
-                // Force a real database failure while saving the report, after validation succeeds.
-                await db.Database.ExecuteSqlRawAsync("ALTER TABLE DailyWorkReports ADD CONSTRAINT TestRejectReport CHECK (Summary <> N'Rejected report for rollback test.')");
+                // Force a real SQL failure after Application validation, in either side of the atomic write.
+                var constraint = rejectReport
+                    ? "ALTER TABLE DailyWorkReports ADD CONSTRAINT TestRejectReport CHECK (Summary <> N'Rejected report for rollback test.')"
+                    : "ALTER TABLE AttendanceEvents ADD CONSTRAINT TestRejectClockOut CHECK (EventType <> N'ClockOut')";
+                await db.Database.ExecuteSqlRawAsync(constraint);
                 var service = CreateService(db, employeeId);
                 await Assert.ThrowsAsync<DbUpdateException>(() => service.PunchAsync(
                     CreateRequest("ClockOut", Guid.NewGuid()) with { DailySummary = "Rejected report for rollback test." }, default));
@@ -220,6 +229,74 @@ public class AttendanceConcurrencyTests
                 Assert.Empty(await db.DailyWorkReports.ToListAsync());
                 Assert.Empty(await db.AuditLogs.ToListAsync());
                 Assert.Empty(await db.IntegrationOutbox.ToListAsync());
+            }
+        }
+        finally { await DeleteDatabaseAsync(connection); }
+    }
+
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
+    public Task DailyReport_IsNotReturnedToAnotherEmployeeInSameCompany() => AssertReportIsolationAsync(otherCompany: false);
+
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
+    public Task DailyReport_IsNotReturnedToAnotherCompany() => AssertReportIsolationAsync(otherCompany: true);
+
+    private static async Task AssertReportIsolationAsync(bool otherCompany)
+    {
+        var connection = CreateConnectionString();
+        try
+        {
+            var ownerId = await InitializeDatabaseAsync(connection);
+            await SeedClockInAsync(connection, ownerId);
+            var readerCompanyId = otherCompany ? Guid.NewGuid() : CompanyId;
+            Guid readerId;
+            DateOnly workDate;
+            const string summary = "Relatório reservado ao funcionário proprietário.";
+            await using (var db = CreateContext(connection))
+            {
+                if (otherCompany)
+                    db.Companies.Add(new Company
+                    {
+                        Id = readerCompanyId, Code = "AVAC-DEMO", Name = "AVAC Demo",
+                        TimeZone = "Europe/Lisbon", CreatedAtUtc = ServerNow
+                    });
+                var reader = new Employee
+                {
+                    CompanyId = readerCompanyId, EmployeeNumber = "READER001",
+                    Name = "Other employee", IsActive = true, CreatedAtUtc = ServerNow
+                };
+                readerId = reader.Id;
+                db.Employees.Add(reader);
+                await db.SaveChangesAsync();
+                var service = CreateService(db, ownerId);
+                Assert.True((await service.PunchAsync(CreateRequest("ClockOut", Guid.NewGuid()) with
+                { DailySummary = summary }, default)).IsSuccess);
+                var report = await db.DailyWorkReports.SingleAsync();
+                Assert.Equal(CompanyId, report.CompanyId);
+                Assert.Equal(ownerId, report.EmployeeId);
+                workDate = report.WorkDate;
+                Assert.Equal(summary, (await service.GetDayAsync(workDate, default)).Value!.DailySummary);
+            }
+            await using (var db = CreateContext(connection))
+            {
+                db.CurrentCompanyId = readerCompanyId;
+                var readerService = CreateService(db, readerId);
+                var ownDay = await readerService.GetDayAsync(workDate, default);
+                Assert.True(ownDay.IsSuccess); // The reader is valid, not simply rejected as inactive/missing.
+                Assert.Null(ownDay.Value!.DailySummary);
+                Assert.Empty(ownDay.Value.Events);
+                if (otherCompany)
+                {
+                    Assert.Empty(await db.DailyWorkReports.ToListAsync());
+                    var backoffice = await readerService.GetBackofficeDayDetailAsync(ownerId, workDate, default);
+                    Assert.Equal(AttendanceError.EmployeeNotFound, backoffice.Error);
+                    Assert.Null(await new AttendanceStore(db).GetDailyWorkReportAsync(CompanyId, ownerId, workDate, default));
+                }
+                else
+                {
+                    Assert.Null(await new AttendanceStore(db).GetDailyWorkReportAsync(CompanyId, readerId, workDate, default));
+                }
             }
         }
         finally { await DeleteDatabaseAsync(connection); }
@@ -263,7 +340,7 @@ public class AttendanceConcurrencyTests
         Guid employeeId,
         DateTimeOffset? now = null)
     {
-        var companyProvider = new FakeCurrentCompanyProvider();
+        var companyProvider = new FakeCurrentCompanyProvider(context.CurrentCompanyId ?? CompanyId);
         var userProvider = new FakeCurrentUserProvider(employeeId);
         var store = new AttendanceStore(context);
         var innerService = new AttendanceService(
@@ -347,9 +424,9 @@ public class AttendanceConcurrencyTests
         await context.Database.EnsureDeletedAsync();
     }
 
-    private sealed class FakeCurrentCompanyProvider : ICurrentCompanyProvider
+    private sealed class FakeCurrentCompanyProvider(Guid companyId) : ICurrentCompanyProvider
     {
-        public Guid? CompanyId => AttendanceConcurrencyTests.CompanyId;
+        public Guid? CompanyId => companyId;
     }
 
     private sealed class FakeCurrentUserProvider : ICurrentUserProvider
