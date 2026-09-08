@@ -29,6 +29,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartField.Api.Tests", "Sma
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartField.Integrations.Primavera.Tests", "SmartField.Integrations.Primavera.Tests\SmartField.Integrations.Primavera.Tests.csproj", "{C95B1D1C-C43D-4425-8108-BC88E8941ACE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SmartField.Client.Tests", "SmartField.Client.Tests\SmartField.Client.Tests.csproj", "{C19FB15A-9853-458B-AD0A-CB88326BEB59}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -171,6 +173,18 @@ Global
 		{C95B1D1C-C43D-4425-8108-BC88E8941ACE}.Release|x64.Build.0 = Release|Any CPU
 		{C95B1D1C-C43D-4425-8108-BC88E8941ACE}.Release|x86.ActiveCfg = Release|Any CPU
 		{C95B1D1C-C43D-4425-8108-BC88E8941ACE}.Release|x86.Build.0 = Release|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Debug|x64.Build.0 = Debug|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Debug|x86.Build.0 = Debug|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Release|x64.ActiveCfg = Release|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Release|x64.Build.0 = Release|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Release|x86.ActiveCfg = Release|Any CPU
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -184,6 +198,7 @@ Global
 		{CF24C19F-431A-4F96-A83F-CBBC1A6C017D} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{E6831BE1-B163-4448-9754-96C94EC70F3B} = {01C07C2A-C8B8-4281-83D4-34016AC2A33F}
 		{4DDC654B-304B-4A29-8289-E5CEA163A0D5} = {01C07C2A-C8B8-4281-83D4-34016AC2A33F}
+		{C19FB15A-9853-458B-AD0A-CB88326BEB59} = {01C07C2A-C8B8-4281-83D4-34016AC2A33F}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {88CE18ED-A221-437A-89DD-BAF86E8CFA49}

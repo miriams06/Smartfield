@@ -228,18 +228,63 @@ Para outra ligação, usar preferencialmente `user-secrets`:
 dotnet user-secrets set "ConnectionStrings:SmartField" "Server=.\SQLEXPRESS;Database=SmartFieldDb;Trusted_Connection=True;TrustServerCertificate=True" --project .\SmartField.Api
 ```
 
-### Administrador de desenvolvimento
+### Utilizadores e dados de demonstração (Development)
 
 ```powershell
 dotnet user-secrets set "Seed:AdminPassword" "<password-local-segura>" --project .\SmartField.Api
+dotnet user-secrets set "Seed:ManagerPassword" "<password-local-segura>" --project .\SmartField.Api
+dotnet user-secrets set "Seed:EmployeePassword" "<password-local-segura>" --project .\SmartField.Api
 ```
 
-Utilizador de demonstração:
+Substituir os placeholders por passwords locais que cumpram a política do Identity.
+Podem ser iguais em Development. Nunca guardar passwords reais no repositório.
+Também é possível configurar `Seed__AdminPassword`, `Seed__ManagerPassword` e
+`Seed__EmployeePassword` no ambiente.
 
-```text
-Email: admin@smartfield.local
-Role: Admin
-```
+Após aplicar as migrations, iniciar a API em `Development`. O `DevelopmentDataSeeder`
+é executado apenas neste ambiente, nunca em Production ou Staging. Sem qualquer
+password configurada não executa o seed; uma password de perfil em falta produz um
+aviso e impede a criação das novas contas desse perfil. Configurar as três para obter
+o conjunto completo. Contas existentes mantêm as passwords e o estado ativo/inativo.
+
+| Empresa | Email | Perfil | Funcionário |
+| --- | --- | --- | --- |
+| SYS-DEMO | admin@smartfield.local | Admin | Mantém a associação existente, se houver |
+| SYS-DEMO | manager@smartfield.local | Manager | MGR001 — Marta Ferreira |
+| SYS-DEMO | joao.silva@smartfield.local | Employee | FUNC001 — João Silva |
+| SYS-DEMO | maria.costa@smartfield.local | Employee | FUNC002 — Maria Costa |
+| AVAC-DEMO | manager.avac@smartfield.local | Manager | MGR001 — Carlos Sousa |
+| AVAC-DEMO | tecnico.avac@smartfield.local | Employee | TEC001 — Técnico AVAC |
+
+São criadas `SYS-DEMO` (Sysprime Demo) e `AVAC-DEMO` (AVAC Demo), com timezone
+`Europe/Lisbon`. Os funcionários novos usam a sede da respetiva empresa como
+`DefaultWorkSite`. Os managers têm registo de funcionário para guardar o nome e a associação.
+
+- SYS-DEMO: locais `SYS-SEDE` (Sede), `SYS-ARM` (Armazém) e `OBR-001` (Obra Porto).
+  Projetos `OBR-001` (Construção Porto, Construction, local Obra Porto) e `MAN-001`
+  (Manutenção AVAC, Maintenance, local Sede).
+- AVAC-DEMO: local `AVAC-SEDE` (Sede AVAC) e projeto `MAN-AVAC-001`
+  (Contrato Manutenção Cliente Demo, Maintenance, local Sede AVAC).
+
+Os projetos novos ficam Active. As configurações novas permitem pausas e deixam a
+geofence Disabled, sem exigir geolocalização; não são inventadas coordenadas.
+Configurações e dados já editados não são repostos em cada arranque.
+
+O seed reutiliza códigos por empresa e emails de utilizadores, sem duplicar dados.
+Um conflito de associação ou perfil aborta a transação com erro explícito. Não aplica
+migrations automaticamente nem altera os seeds históricos das migrations: estes já
+incluem SYS-DEMO/FUNC001, independentemente do ambiente, mas não contas de login.
+
+Compatibilidade com o seed antigo: se o Admin estiver ligado a FUNC001, esse funcionário
+passa a `ADMIN-DEMO`; se `employee@smartfield.local` estiver ligado a FUNC002, passa a
+`MOBILE-DEMO`. Mantêm-se IDs, contas, passwords e histórico, criando João/Maria nos
+números pedidos. A conta antiga de Employee continua disponível, mas já não é criada
+em bases novas. O registo genérico FUNC001 sem conta é aproveitado para João.
+
+Validação manual: entrar com cada perfil, verificar backoffice/PWA, locais habituais
+e listagens; comparar SYS-DEMO com AVAC-DEMO e tentar consultar um ID da outra empresa.
+Reiniciar a API e confirmar que os registos não duplicam. Os testes de seed e isolamento
+com SQL real usam `SMARTFIELD_TEST_CONNECTION_STRING` e `Category=Integration`.
 
 ### Restaurar e compilar
 
