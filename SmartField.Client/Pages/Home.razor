@@ -103,15 +103,18 @@
                         <textarea id="daily-summary" rows="6" maxlength="4000"
                                   @bind="_dailySummary" @bind:event="oninput"
                                   disabled="@_submitting" aria-describedby="daily-summary-count daily-summary-error"></textarea>
-                        <small id="daily-summary-count">@_dailySummary.Length / 4000</small>
+                        <div class="daily-summary-meta">
+                            <span>Mínimo de 10 caracteres</span>
+                            <small id="daily-summary-count">@_dailySummary.Length / 4000</small>
+                        </div>
                         @if (DailySummaryError is not null)
                         {
-                            <p id="daily-summary-error" class="attendance-feedback--error" role="alert">@DailySummaryError</p>
+                            <p id="daily-summary-error" class="daily-summary-validation" role="alert">@DailySummaryError</p>
                         }
-                        <div class="dashboard-actions">
-                            <button type="button" class="secondary-action" disabled="@_submitting"
+                        <div class="daily-summary-actions">
+                            <button type="button" class="daily-summary-cancel" disabled="@_submitting"
                                     @onclick="() => _showDailySummary = false">Cancelar</button>
-                            <button type="button" class="primary-action" disabled="@(_submitting || DailySummaryError is not null)"
+                            <button type="button" class="daily-summary-submit" disabled="@(_submitting || DailySummaryError is not null)"
                                     @onclick="SubmitDailySummaryAsync">@(_submitting ? "A registar..." : "TERMINAR DIA")</button>
                         </div>
                     </section>
