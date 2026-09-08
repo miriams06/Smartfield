@@ -2,7 +2,7 @@ using System.Net;
 
 namespace SmartField.Client.Services;
 
-public sealed class SmartFieldApiException : Exception
+public class SmartFieldApiException : Exception
 {
     public SmartFieldApiException(
         HttpStatusCode statusCode,

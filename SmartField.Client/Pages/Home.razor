@@ -160,14 +160,17 @@
         {
             _state = await AttendanceApiClient.GetStateAsync(CancellationToken.None);
         }
-        catch (SmartFieldApiException exception)
+        catch (AttendanceApiException exception)
         {
             _errorMessage = exception.Message;
         }
-        catch (Exception exception)
-            when (exception is HttpRequestException or TaskCanceledException)
+        catch (HttpRequestException)
         {
-            _errorMessage = ClientHttpErrorMessages.FromException(exception);
+            _errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        catch (TaskCanceledException)
+        {
+            _errorMessage = "O carregamento do estado foi cancelado.";
         }
         finally
         {
@@ -191,14 +194,17 @@
                     $"Foi selecionado por defeito o teu local de trabalho habitual: {FormatWorkSite(defaultWorkSite)}.");
             }
         }
-        catch (SmartFieldApiException exception)
+        catch (AttendanceApiException exception)
         {
             AddWarning($"Não foi possível carregar os locais de trabalho: {exception.Message}");
         }
-        catch (Exception exception)
-            when (exception is HttpRequestException or TaskCanceledException)
+        catch (HttpRequestException)
         {
-            AddWarning(ClientHttpErrorMessages.FromException(exception));
+            AddWarning("Não foi possível carregar os locais de trabalho disponíveis.");
+        }
+        catch (TaskCanceledException)
+        {
+            AddWarning("O carregamento dos locais de trabalho foi cancelado.");
         }
     }
 
@@ -273,14 +279,17 @@
 
             await RefreshStateAsync();
         }
-        catch (SmartFieldApiException exception)
+        catch (AttendanceApiException exception)
         {
             _errorMessage = exception.Message;
         }
-        catch (Exception exception)
-            when (exception is HttpRequestException or TaskCanceledException)
+        catch (HttpRequestException)
         {
-            _errorMessage = ClientHttpErrorMessages.FromException(exception);
+            _errorMessage = "Não foi possível comunicar com a API do SmartField.";
+        }
+        catch (TaskCanceledException)
+        {
+            _errorMessage = "A picagem foi cancelada antes de terminar.";
         }
         finally
         {

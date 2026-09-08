@@ -9,12 +9,12 @@ public static class ApiResponseReader
 {
     private const string CorrelationIdHeaderName = "X-Correlation-ID";
 
-    public static async Task<T> ReadRequiredAsync<T>(
+    public static Task<T> ReadRequiredAsync<T>(
         HttpResponseMessage response,
         CancellationToken cancellationToken)
         where T : class
     {
-        return await ReadRequiredAsync<T, SmartFieldApiException>(
+        return ReadRequiredAsync<T, SmartFieldApiException>(
             response,
             static (statusCode, message, correlationId) =>
                 new SmartFieldApiException(statusCode, message, correlationId),

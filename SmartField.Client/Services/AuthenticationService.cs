@@ -20,7 +20,10 @@ public sealed class AuthenticationService
         this.authenticationStateProvider = authenticationStateProvider;
     }
 
-    public async Task<bool> LoginAsync(string email, string password, CancellationToken cancellationToken)
+    public async Task<bool> LoginAsync(
+        string email,
+        string password,
+        CancellationToken cancellationToken)
     {
         using var response = await httpClient.PostAsJsonAsync(
             "api/auth/login",
@@ -55,9 +58,13 @@ public sealed class AuthenticationService
         authenticationStateProvider.NotifyUserSignedOut();
     }
 
-    public async Task<CurrentUserResponse?> GetCurrentUserAsync(CancellationToken cancellationToken)
+    public async Task<CurrentUserResponse?> GetCurrentUserAsync(
+        CancellationToken cancellationToken)
     {
-        using var response = await httpClient.GetAsync("api/auth/me", cancellationToken);
+        using var response = await httpClient.GetAsync(
+            "api/auth/me",
+            cancellationToken);
+
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             await LogoutAsync();

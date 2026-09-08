@@ -2,29 +2,180 @@ using System.Net;
 
 namespace SmartField.Client.Attendance;
 
-public sealed record AttendancePunchRequest(string EventType, Guid ClientEventId, DateTimeOffset? ClientTimestampUtc, decimal? Latitude, decimal? Longitude, decimal? AccuracyMeters, Guid? WorkSiteId, Guid? ProjectId);
-public sealed record AttendancePunchDto(Guid Id, Guid EmployeeId, string EventType, Guid ClientEventId, DateTimeOffset ServerTimestampUtc, DateTimeOffset? ClientTimestampUtc, decimal? Latitude, decimal? Longitude, decimal? AccuracyMeters, Guid? WorkSiteId, Guid? ProjectId, bool? IsInsideGeofence, decimal? DistanceFromWorkSiteMeters, bool IsDuplicate);
-public sealed record AttendanceWorkSiteOptionDto(Guid Id, string Code, string Name, string? Address, bool IsDefault);
-public sealed record AttendanceStateDto(Guid EmployeeId, string EmployeeName, string CurrentState, string CurrentStateLabel, string LocalDate, string? LastEventType, IReadOnlyList<string> AllowedEventTypes, DateTimeOffset? ClockInAtUtc, int WorkedDurationMinutes, int BreakDurationMinutes, int BreakCount, DateTimeOffset CalculatedAtUtc);
-public sealed record AttendanceHistoryDayDto(string Date, DateTimeOffset? ClockIn, DateTimeOffset? ClockOut, int BreakCount, int BreakMinutes, int WorkedMinutes, bool HasOutsideGeofence);
-public sealed record AttendanceDayDetailDto(string Date, DateTimeOffset? ClockIn, DateTimeOffset? ClockOut, IReadOnlyList<AttendanceBreakDto> Breaks, int WorkedMinutes, int BreakMinutes, string CurrentStatus, IReadOnlyList<string> NextAllowedActions, bool HasOutsideGeofence, IReadOnlyList<AttendanceHistoryEventDto> Events);
-public sealed record AttendanceBackofficeDayDto(string Date, IReadOnlyList<AttendanceBackofficeEmployeeDayDto> Employees);
-public sealed record AttendanceBackofficeEmployeeDayDto(Guid EmployeeId, string EmployeeNumber, string EmployeeName, Guid? DefaultWorkSiteId, string? DefaultWorkSiteName, DateTimeOffset? ClockIn, DateTimeOffset? ClockOut, int BreakCount, int BreakMinutes, int WorkedMinutes, string CurrentStatus, string CurrentStatusLabel, bool HasOutsideGeofence);
-public sealed record AttendanceBackofficeDayDetailDto(string Date, Guid EmployeeId, string EmployeeNumber, string EmployeeName, Guid? DefaultWorkSiteId, string? DefaultWorkSiteName, DateTimeOffset? ClockIn, DateTimeOffset? ClockOut, IReadOnlyList<AttendanceBreakDto> Breaks, int WorkedMinutes, int BreakMinutes, string CurrentStatus, string CurrentStatusLabel, bool HasOutsideGeofence, IReadOnlyList<AttendanceBackofficeEventDto> Events);
-public sealed record AttendanceBackofficeEventDto(Guid Id, string EventType, DateTimeOffset ServerTimestampUtc, DateTimeOffset? ClientTimestampUtc, Guid? WorkSiteId, Guid? ProjectId, bool? IsInsideGeofence, decimal? DistanceFromWorkSiteMeters, AttendanceCorrectionDto? Correction);
-public sealed record AttendanceCsvExportDto(string FileName, string ContentType, string Content);
-public sealed record AttendanceCorrectionRequest(string CorrectedEventType, DateTimeOffset? CorrectedTimestampUtc, string Reason);
-public sealed record AttendanceCorrectionDto(Guid Id, Guid AttendanceEventId, DateTimeOffset OriginalTimestampUtc, DateTimeOffset CorrectedTimestampUtc, string OriginalEventType, string CorrectedEventType, string Reason, Guid CorrectedByUserId, string? CorrectedByUserName, DateTimeOffset CreatedAtUtc);
-public sealed record AttendanceBreakDto(DateTimeOffset StartedAtUtc, DateTimeOffset? EndedAtUtc, int Minutes);
-public sealed record AttendanceHistoryEventDto(Guid Id, string EventType, DateTimeOffset ServerTimestampUtc, DateTimeOffset? ClientTimestampUtc, Guid? WorkSiteId, Guid? ProjectId, bool? IsInsideGeofence, decimal? DistanceFromWorkSiteMeters);
+public sealed record AttendancePunchRequest(
+    string EventType,
+    Guid ClientEventId,
+    DateTimeOffset? ClientTimestampUtc,
+    decimal? Latitude,
+    decimal? Longitude,
+    decimal? AccuracyMeters,
+    Guid? WorkSiteId,
+    Guid? ProjectId);
+
+public sealed record AttendancePunchDto(
+    Guid Id,
+    Guid EmployeeId,
+    string EventType,
+    Guid ClientEventId,
+    DateTimeOffset ServerTimestampUtc,
+    DateTimeOffset? ClientTimestampUtc,
+    decimal? Latitude,
+    decimal? Longitude,
+    decimal? AccuracyMeters,
+    Guid? WorkSiteId,
+    Guid? ProjectId,
+    bool? IsInsideGeofence,
+    decimal? DistanceFromWorkSiteMeters,
+    bool IsDuplicate);
+
+public sealed record AttendanceWorkSiteOptionDto(
+    Guid Id,
+    string Code,
+    string Name,
+    string? Address,
+    bool IsDefault);
+
+public sealed record AttendanceStateDto(
+    Guid EmployeeId,
+    string EmployeeName,
+    string CurrentState,
+    string CurrentStateLabel,
+    string LocalDate,
+    string? LastEventType,
+    IReadOnlyList<string> AllowedEventTypes,
+    DateTimeOffset? ClockInAtUtc,
+    int WorkedDurationMinutes,
+    int BreakDurationMinutes,
+    int BreakCount,
+    DateTimeOffset CalculatedAtUtc);
+
+public sealed record AttendanceHistoryDayDto(
+    string Date,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    int BreakCount,
+    int BreakMinutes,
+    int WorkedMinutes,
+    bool HasOutsideGeofence);
+
+public sealed record AttendanceDayDetailDto(
+    string Date,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    IReadOnlyList<AttendanceBreakDto> Breaks,
+    int WorkedMinutes,
+    int BreakMinutes,
+    string CurrentStatus,
+    IReadOnlyList<string> NextAllowedActions,
+    bool HasOutsideGeofence,
+    IReadOnlyList<AttendanceHistoryEventDto> Events);
+
+public sealed record AttendanceBackofficeDayDto(
+    string Date,
+    IReadOnlyList<AttendanceBackofficeEmployeeDayDto> Employees);
+
+public sealed record AttendanceBackofficeEmployeeDayDto(
+    Guid EmployeeId,
+    string EmployeeNumber,
+    string EmployeeName,
+    Guid? DefaultWorkSiteId,
+    string? DefaultWorkSiteName,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    int BreakCount,
+    int BreakMinutes,
+    int WorkedMinutes,
+    string CurrentStatus,
+    string CurrentStatusLabel,
+    bool HasOutsideGeofence);
+
+public sealed record AttendanceBackofficeDayDetailDto(
+    string Date,
+    Guid EmployeeId,
+    string EmployeeNumber,
+    string EmployeeName,
+    Guid? DefaultWorkSiteId,
+    string? DefaultWorkSiteName,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut,
+    IReadOnlyList<AttendanceBreakDto> Breaks,
+    int WorkedMinutes,
+    int BreakMinutes,
+    string CurrentStatus,
+    string CurrentStatusLabel,
+    bool HasOutsideGeofence,
+    IReadOnlyList<AttendanceBackofficeEventDto> Events);
+
+public sealed record AttendanceBackofficeEventDto(
+    Guid Id,
+    string EventType,
+    DateTimeOffset ServerTimestampUtc,
+    DateTimeOffset? ClientTimestampUtc,
+    Guid? WorkSiteId,
+    Guid? ProjectId,
+    bool? IsInsideGeofence,
+    decimal? DistanceFromWorkSiteMeters,
+    AttendanceCorrectionDto? Correction);
+
+public sealed record AttendanceCsvExportDto(
+    string FileName,
+    string ContentType,
+    string Content);
+
+public sealed record AttendanceCorrectionRequest(
+    string CorrectedEventType,
+    DateTimeOffset? CorrectedTimestampUtc,
+    string Reason);
+
+public sealed record AttendanceCorrectionDto(
+    Guid Id,
+    Guid AttendanceEventId,
+    DateTimeOffset OriginalTimestampUtc,
+    DateTimeOffset CorrectedTimestampUtc,
+    string OriginalEventType,
+    string CorrectedEventType,
+    string Reason,
+    Guid CorrectedByUserId,
+    string? CorrectedByUserName,
+    DateTimeOffset CreatedAtUtc);
+
+public sealed record AttendanceBreakDto(
+    DateTimeOffset StartedAtUtc,
+    DateTimeOffset? EndedAtUtc,
+    int Minutes);
+
+public sealed record AttendanceHistoryEventDto(
+    Guid Id,
+    string EventType,
+    DateTimeOffset ServerTimestampUtc,
+    DateTimeOffset? ClientTimestampUtc,
+    Guid? WorkSiteId,
+    Guid? ProjectId,
+    bool? IsInsideGeofence,
+    decimal? DistanceFromWorkSiteMeters);
 
 public sealed class AttendanceApiException : Exception
 {
-    public AttendanceApiException(HttpStatusCode statusCode, string message, string? correlationId = null) : base(message)
+    public AttendanceApiException(
+        HttpStatusCode statusCode,
+        string message,
+        string? correlationId = null)
+        : base(message)
     {
         StatusCode = statusCode;
         CorrelationId = correlationId;
     }
+
     public HttpStatusCode StatusCode { get; }
+
     public string? CorrelationId { get; }
+}
+
+internal sealed class AttendanceProblemDetails
+{
+    public string? Title { get; set; }
+
+    public string? Detail { get; set; }
+
+    public Dictionary<string, string[]>? Errors { get; set; }
 }

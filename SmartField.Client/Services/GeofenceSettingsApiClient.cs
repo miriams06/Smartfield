@@ -7,25 +7,46 @@ public sealed class GeofenceSettingsApiClient
 {
     private readonly HttpClient httpClient;
 
-    public GeofenceSettingsApiClient(HttpClient httpClient) => this.httpClient = httpClient;
-
-    public async Task<GeofenceSettingsDto> GetAsync(CancellationToken cancellationToken)
+    public GeofenceSettingsApiClient(HttpClient httpClient)
     {
-        using var response = await httpClient.GetAsync("api/geofence-settings", cancellationToken);
-        return await ReadRequiredAsync(response, cancellationToken);
+        this.httpClient = httpClient;
     }
 
-    public async Task<GeofenceSettingsDto> UpdateAsync(UpdateGeofenceSettingsRequest request, CancellationToken cancellationToken)
+    public async Task<GeofenceSettingsDto> GetAsync(
+        CancellationToken cancellationToken)
     {
-        using var response = await httpClient.PutAsJsonAsync("api/geofence-settings", request, cancellationToken);
-        return await ReadRequiredAsync(response, cancellationToken);
-    }
+        using var response = await httpClient.GetAsync(
+            "api/geofence-settings",
+            cancellationToken);
 
-    private static Task<GeofenceSettingsDto> ReadRequiredAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        return ApiResponseReader.ReadRequiredAsync<GeofenceSettingsDto, GeolocationApiException>(
+        return await ReadRequiredAsync<GeofenceSettingsDto>(
             response,
-            static (statusCode, message, correlationId) => new GeolocationApiException(statusCode, message, correlationId),
+            cancellationToken);
+    }
+
+    public async Task<GeofenceSettingsDto> UpdateAsync(
+        UpdateGeofenceSettingsRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PutAsJsonAsync(
+            "api/geofence-settings",
+            request,
+            cancellationToken);
+
+        return await ReadRequiredAsync<GeofenceSettingsDto>(
+            response,
+            cancellationToken);
+    }
+
+    private static Task<T> ReadRequiredAsync<T>(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+        where T : class
+    {
+        return ApiResponseReader.ReadRequiredAsync<T, GeolocationApiException>(
+            response,
+            static (statusCode, message, correlationId) =>
+                new GeolocationApiException(statusCode, message, correlationId),
             cancellationToken);
     }
 }

@@ -7,14 +7,24 @@ public sealed class GeolocationApiClient
 {
     private readonly HttpClient httpClient;
 
-    public GeolocationApiClient(HttpClient httpClient) => this.httpClient = httpClient;
-
-    public async Task<GeolocationValidationDto> ValidateAsync(GeolocationValidationRequest request, CancellationToken cancellationToken)
+    public GeolocationApiClient(HttpClient httpClient)
     {
-        using var response = await httpClient.PostAsJsonAsync("api/geolocation/validate", request, cancellationToken);
+        this.httpClient = httpClient;
+    }
+
+    public async Task<GeolocationValidationDto> ValidateAsync(
+        GeolocationValidationRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.PostAsJsonAsync(
+            "api/geolocation/validate",
+            request,
+            cancellationToken);
+
         return await ApiResponseReader.ReadRequiredAsync<GeolocationValidationDto, GeolocationApiException>(
             response,
-            static (statusCode, message, correlationId) => new GeolocationApiException(statusCode, message, correlationId),
+            static (statusCode, message, correlationId) =>
+                new GeolocationApiException(statusCode, message, correlationId),
             cancellationToken);
     }
 }
