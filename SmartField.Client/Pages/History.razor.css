@@ -186,3 +186,5 @@
         grid-template-columns: 1fr 1fr;
     }
 }
+
+.daily-summary-text { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -5,6 +5,11 @@ namespace SmartField.Application.Attendance;
 
 public interface IAttendanceStore
 {
+    Task<DailyWorkReport?> GetDailyWorkReportAsync(
+        Guid companyId, Guid employeeId, DateOnly workDate, CancellationToken cancellationToken);
+
+    void Add(DailyWorkReport report);
+
     Task<bool> EmployeeCanPunchAsync(
         Guid companyId,
         Guid employeeId,

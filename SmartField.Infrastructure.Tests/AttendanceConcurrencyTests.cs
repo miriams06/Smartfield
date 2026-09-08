@@ -93,6 +93,7 @@ public class AttendanceConcurrencyTests
                 await assertionContext.AttendanceEvents.CountAsync(
                     item => item.EmployeeId == employeeId
                         && item.EventType == AttendanceEventType.ClockOut));
+            Assert.Single(await assertionContext.DailyWorkReports.ToListAsync());
         }
         finally
         {
@@ -141,6 +142,89 @@ public class AttendanceConcurrencyTests
         }
     }
 
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
+    public async Task DailyReport_IsAtomicAuditedIdempotentAndVisibleInBothDetails()
+    {
+        var connection = CreateConnectionString();
+        try
+        {
+            var employeeId = await InitializeDatabaseAsync(connection);
+            await SeedClockInAsync(connection, employeeId);
+            var request = CreateRequest("ClockOut", Guid.NewGuid()) with { DailySummary = "  Instalação concluída.\nEquipamento testado.  " };
+            Guid reportId;
+            using (var db = CreateContext(connection))
+            {
+                var service = CreateService(db, employeeId);
+                var result = await service.PunchAsync(request, default);
+                Assert.True(result.IsSuccess);
+                var report = await db.DailyWorkReports.SingleAsync();
+                reportId = report.Id;
+                Assert.Equal(request.DailySummary, report.Summary);
+                Assert.Equal(result.Value!.Id, report.ClockOutAttendanceEventId);
+                var date = report.WorkDate;
+                Assert.Equal(request.DailySummary, (await service.GetDayAsync(date, default)).Value!.DailySummary);
+                Assert.Equal(request.DailySummary, (await service.GetBackofficeDayDetailAsync(employeeId, date, default)).Value!.DailySummary);
+                var auditCount = await db.AuditLogs.CountAsync();
+                var duplicate = await service.PunchAsync(request with { DailySummary = "Texto diferente no reenvio." }, default);
+                Assert.True(duplicate.Value!.IsDuplicate);
+                Assert.Equal(auditCount, await db.AuditLogs.CountAsync());
+                Assert.Equal(request.DailySummary, (await db.DailyWorkReports.SingleAsync()).Summary);
+            }
+            // A later shift on the same date updates the same report, retaining the audit history.
+            using (var db = CreateContext(connection))
+            {
+                var service = CreateService(db, employeeId, ServerNow.AddHours(1));
+                Assert.True((await service.PunchAsync(CreateRequest("ClockIn", Guid.NewGuid()), default)).IsSuccess);
+            }
+            using (var db = CreateContext(connection))
+            {
+                var service = CreateService(db, employeeId, ServerNow.AddHours(2));
+                var result = await service.PunchAsync(CreateRequest("ClockOut", Guid.NewGuid()) with { DailySummary = "Resumo atualizado da jornada completa." }, default);
+                Assert.True(result.IsSuccess);
+                var report = await db.DailyWorkReports.SingleAsync();
+                Assert.Equal(reportId, report.Id);
+                Assert.Equal(result.Value!.Id, report.ClockOutAttendanceEventId);
+                Assert.Equal(ServerNow.AddHours(2), report.UpdatedAtUtc);
+                var audit = await db.AuditLogs.SingleAsync(x => x.EntityType == nameof(DailyWorkReport) && x.Action == "Updated");
+                using var old = System.Text.Json.JsonDocument.Parse(audit.OldValues!);
+                Assert.Equal(request.DailySummary, old.RootElement.GetProperty("Summary").GetString());
+                db.CurrentCompanyId = Guid.NewGuid();
+                Assert.Empty(await db.DailyWorkReports.ToListAsync());
+                Assert.Null(await new AttendanceStore(db).GetDailyWorkReportAsync(CompanyId, employeeId, report.WorkDate, default));
+            }
+        }
+        finally { await DeleteDatabaseAsync(connection); }
+    }
+
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
+    public async Task DailyReportFailure_RollsBackClockOutAuditAndOutbox()
+    {
+        var connection = CreateConnectionString();
+        try
+        {
+            var employeeId = await InitializeDatabaseAsync(connection);
+            await SeedClockInAsync(connection, employeeId);
+            using (var db = CreateContext(connection))
+            {
+                // Force a real database failure while saving the report, after validation succeeds.
+                await db.Database.ExecuteSqlRawAsync("ALTER TABLE DailyWorkReports ADD CONSTRAINT TestRejectReport CHECK (Summary <> N'Rejected report for rollback test.')");
+                var service = CreateService(db, employeeId);
+                await Assert.ThrowsAsync<DbUpdateException>(() => service.PunchAsync(
+                    CreateRequest("ClockOut", Guid.NewGuid()) with { DailySummary = "Rejected report for rollback test." }, default));
+            }
+            using (var db = CreateContext(connection))
+            {
+                Assert.Equal(AttendanceEventType.ClockIn, (await db.AttendanceEvents.SingleAsync()).EventType);
+                Assert.Empty(await db.DailyWorkReports.ToListAsync());
+                Assert.Empty(await db.AuditLogs.ToListAsync());
+                Assert.Empty(await db.IntegrationOutbox.ToListAsync());
+            }
+        }
+        finally { await DeleteDatabaseAsync(connection); }
+    }
+
     private static async Task<Guid> InitializeDatabaseAsync(string connectionString)
     {
         await using var context = CreateContext(connectionString);
@@ -176,7 +260,8 @@ public class AttendanceConcurrencyTests
 
     private static IAttendanceService CreateService(
         SmartFieldDbContext context,
-        Guid employeeId)
+        Guid employeeId,
+        DateTimeOffset? now = null)
     {
         var companyProvider = new FakeCurrentCompanyProvider();
         var userProvider = new FakeCurrentUserProvider(employeeId);
@@ -187,7 +272,7 @@ public class AttendanceConcurrencyTests
             userProvider,
             new AcceptingGeolocationService(),
             new IntegrationOutboxService(new IntegrationOutboxStore(context)),
-            new FixedTimeProvider());
+            new FixedTimeProvider(now));
 
         return new SerializedAttendanceService(
             innerService,
@@ -208,7 +293,8 @@ public class AttendanceConcurrencyTests
             null,
             null,
             null,
-            null);
+            null,
+            eventType == "ClockOut" ? "Trabalho realizado durante o dia." : null);
     }
 
     private static async Task<AttendanceResult<AttendancePunchDto>[]> RunConcurrentlyAsync(
@@ -279,9 +365,9 @@ public class AttendanceConcurrencyTests
         public Guid? EmployeeId => employeeId;
     }
 
-    private sealed class FixedTimeProvider : TimeProvider
+    private sealed class FixedTimeProvider(DateTimeOffset? now = null) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => ServerNow;
+        public override DateTimeOffset GetUtcNow() => now ?? ServerNow;
     }
 
     private sealed class AcceptingGeolocationService : IGeolocationService

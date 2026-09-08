@@ -243,7 +243,9 @@ public sealed class AttendanceService : IAttendanceService
                     .Select(eventType => eventType.ToString())
                     .ToArray(),
                 HasOutsideGeofence(dayEvents),
-                dayEvents.Select(MapTodayEvent).ToArray()));
+                dayEvents.Select(MapTodayEvent).ToArray(),
+                (await attendanceStore.GetDailyWorkReportAsync(
+                    historyContext.CompanyId, historyContext.EmployeeId, date, cancellationToken))?.Summary));
     }
 
     public async Task<AttendanceResult<AttendanceBackofficeDayDto>> GetBackofficeDayAsync(
@@ -530,7 +532,9 @@ public sealed class AttendanceService : IAttendanceService
                 originalEvents
                     .Select(attendanceEvent =>
                         MapBackofficeEvent(attendanceEvent, latestCorrections))
-                    .ToArray()));
+                    .ToArray(),
+                (await attendanceStore.GetDailyWorkReportAsync(
+                    companyId.Value, employeeId, date, cancellationToken))?.Summary));
     }
 
     public async Task<AttendanceResult<AttendanceCorrectionDto>> CorrectBackofficeEventAsync(
@@ -652,6 +656,16 @@ public sealed class AttendanceService : IAttendanceService
                 Map(existing, isDuplicate: true));
         }
 
+        if (validation.EventType == AttendanceEventType.ClockOut)
+        {
+            var summaryError = DailyWorkReportService.ValidateSummary(request.DailySummary);
+            if (summaryError is not null)
+                return AttendanceResult<AttendancePunchDto>.Invalid(new Dictionary<string, string[]>
+                {
+                    [nameof(request.DailySummary)] = [summaryError]
+                });
+        }
+
         if (request.ProjectId.HasValue
             && !await attendanceStore.ProjectExistsAsync(
                 context.CompanyId,
@@ -734,6 +748,17 @@ public sealed class AttendanceService : IAttendanceService
             ClientEventId = request.ClientEventId,
             CreatedAtUtc = serverTimestampUtc
         };
+
+        if (validation.EventType == AttendanceEventType.ClockOut)
+        {
+            var companyTimeZone = await GetCurrentCompanyTimeZoneAsync(context.CompanyId, cancellationToken);
+            if (companyTimeZone is null)
+                return AttendanceResult<AttendancePunchDto>.Failure(AttendanceError.CompanyUnavailable);
+
+            var workDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(serverTimestampUtc, companyTimeZone).Date);
+            await DailyWorkReportService.SubmitAsync(
+                attendanceStore, attendanceEvent, context.UserId, request.DailySummary!, workDate, cancellationToken);
+        }
 
         var payload = SerializeEvent(attendanceEvent);
 

@@ -229,6 +229,11 @@
                     </div>
                 </div>
 
+                <section class="admin-attendance-detail__section">
+                    <h3>Resumo do dia</h3>
+                    <p class="daily-summary-text">@(_detail.DailySummary ?? "Sem resumo submetido.")</p>
+                </section>
+
                 @if (_detail.Breaks.Count > 0)
                 {
                     <section class="admin-attendance-detail__section">

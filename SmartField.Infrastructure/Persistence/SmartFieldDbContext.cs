@@ -35,6 +35,8 @@ public class SmartFieldDbContext : IdentityDbContext<ApplicationUser, IdentityRo
 
     public DbSet<AttendanceEvent> AttendanceEvents => Set<AttendanceEvent>();
 
+    public DbSet<DailyWorkReport> DailyWorkReports => Set<DailyWorkReport>();
+
     public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -53,6 +55,9 @@ public class SmartFieldDbContext : IdentityDbContext<ApplicationUser, IdentityRo
 
     private void ConfigureCompanyFilters(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<DailyWorkReport>()
+            .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId);
+
         modelBuilder.Entity<CompanySettings>()
             .HasQueryFilter(entity => CompanyFilterId.HasValue && entity.CompanyId == CompanyFilterId.Value);
 

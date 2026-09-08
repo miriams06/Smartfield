@@ -318,6 +318,16 @@ public sealed class AttendanceStore : IAttendanceStore
         dbContext.AttendanceEvents.Add(attendanceEvent);
     }
 
+    public Task<DailyWorkReport?> GetDailyWorkReportAsync(
+        Guid companyId, Guid employeeId, DateOnly workDate, CancellationToken cancellationToken)
+    {
+        return dbContext.DailyWorkReports.SingleOrDefaultAsync(
+            report => report.CompanyId == companyId && report.EmployeeId == employeeId
+                && report.WorkDate == workDate, cancellationToken);
+    }
+
+    public void Add(DailyWorkReport report) => dbContext.DailyWorkReports.Add(report);
+
     public void Add(AttendanceCorrection attendanceCorrection)
     {
         dbContext.AttendanceCorrections.Add(attendanceCorrection);

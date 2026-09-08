@@ -106,7 +106,7 @@ public class AttendanceServiceTests
         Assert.False(result.Value?.IsDuplicate);
         Assert.Equal(next, result.Value?.EventType);
         Assert.Single(store.AttendanceEvents);
-        Assert.Single(store.AuditLogs);
+        Assert.Equal(next == "ClockOut" ? 2 : 1, store.AuditLogs.Count);
         Assert.Single(store.OutboxItems);
     }
 
@@ -238,7 +238,7 @@ public class AttendanceServiceTests
         Assert.True(clockIn.IsSuccess);
         Assert.True(clockOut.IsSuccess);
         Assert.Equal(["ClockIn", "ClockOut"], store.AttendanceEvents.Select(item => item.EventType.ToString()));
-        Assert.Equal(2, store.AuditLogs.Count);
+        Assert.Equal(3, store.AuditLogs.Count);
         Assert.Equal(2, store.OutboxItems.Count);
         Assert.Equal(2, store.SaveChangesCalls);
     }
@@ -269,7 +269,7 @@ public class AttendanceServiceTests
         Assert.Equal(
             ["ClockIn", "BreakStart", "BreakEnd", "ClockOut"],
             store.AttendanceEvents.Select(item => item.EventType.ToString()));
-        Assert.Equal(4, store.AuditLogs.Count);
+        Assert.Equal(5, store.AuditLogs.Count);
         Assert.Equal(4, store.OutboxItems.Count);
         Assert.Equal(4, store.SaveChangesCalls);
     }
@@ -466,9 +466,106 @@ public class AttendanceServiceTests
         Assert.Empty(store.AttendanceEvents);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("          ")]
+    [InlineData(" 123456789 ")]
+    public async Task ClockOut_RejectsMissingOrShortSummaryWithoutSaving(string? summary)
+    {
+        var store = new FakeAttendanceStore { LastEventType = AttendanceEventType.ClockIn };
+        var result = await CreateService(store).PunchAsync(
+            CreateRequest("ClockOut") with { DailySummary = summary }, default);
+        Assert.Equal(AttendanceError.Validation, result.Error);
+        Assert.Contains("DailySummary", result.ValidationErrors.Keys);
+        Assert.Empty(store.AttendanceEvents);
+        Assert.Empty(store.DailyWorkReports);
+        Assert.Empty(store.AuditLogs);
+        Assert.Equal(0, store.SaveChangesCalls);
+    }
+
+    [Fact]
+    public async Task ClockOut_RejectsOverlongSummary()
+    {
+        var store = new FakeAttendanceStore { LastEventType = AttendanceEventType.ClockIn };
+        var result = await CreateService(store).PunchAsync(
+            CreateRequest("ClockOut") with { DailySummary = new string('a', 4001) }, default);
+        Assert.Equal(AttendanceError.Validation, result.Error);
+        Assert.Equal(0, store.SaveChangesCalls);
+    }
+
+    [Theory]
+    [InlineData(10)]
+    [InlineData(4000)]
+    public async Task ClockOut_AcceptsSummaryLengthBoundaries(int length)
+    {
+        var store = new FakeAttendanceStore { LastEventType = AttendanceEventType.ClockIn };
+        var result = await CreateService(store).PunchAsync(
+            CreateRequest("ClockOut") with { DailySummary = new string('a', length) }, default);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(length, Assert.Single(store.DailyWorkReports).Summary.Length);
+    }
+
+    [Fact]
+    public async Task ClockOut_PreservesTextAndUsesServerDateInCompanyTimeZone()
+    {
+        var store = new FakeAttendanceStore { LastEventType = AttendanceEventType.ClockIn };
+        var now = new DateTimeOffset(2026, 8, 31, 23, 30, 0, TimeSpan.Zero);
+        const string summary = "  Instalação concluída.\nTeste de funcionamento.  ";
+        var result = await CreateService(store, now: now).PunchAsync(
+            CreateRequest("ClockOut") with { DailySummary = summary }, default);
+        Assert.True(result.IsSuccess);
+        var report = Assert.Single(store.DailyWorkReports);
+        Assert.Equal(summary, report.Summary);
+        Assert.Equal(new DateOnly(2026, 9, 1), report.WorkDate);
+        Assert.Equal(now, report.SubmittedAtUtc);
+        Assert.Equal(now, report.CreatedAtUtc);
+        Assert.Null(report.UpdatedAtUtc);
+        Assert.Equal(result.Value!.Id, report.ClockOutAttendanceEventId);
+        Assert.Equal(CompanyId, report.CompanyId);
+        Assert.Equal(EmployeeId, report.EmployeeId);
+        Assert.Equal(1, store.SaveChangesCalls);
+    }
+
+    [Fact]
+    public async Task ReopenedDay_UpdatesOneReportAndAuditsPreviousSummary()
+    {
+        var store = new FakeAttendanceStore { LastEventType = AttendanceEventType.ClockIn };
+        var service = CreateService(store);
+        await service.PunchAsync(CreateRequest("ClockOut"), default);
+        var report = Assert.Single(store.DailyWorkReports);
+        var originalId = report.Id;
+        var originalClockOut = report.ClockOutAttendanceEventId;
+        var originalSummary = report.Summary;
+        await service.PunchAsync(CreateRequest("ClockIn"), default);
+        var next = await service.PunchAsync(CreateRequest("ClockOut") with { DailySummary = "Resumo revisto depois da reabertura." }, default);
+        Assert.True(next.IsSuccess);
+        Assert.Equal(originalId, Assert.Single(store.DailyWorkReports).Id);
+        Assert.Equal(next.Value!.Id, report.ClockOutAttendanceEventId);
+        Assert.Equal(ServerNow, report.UpdatedAtUtc);
+        var audit = Assert.Single(store.AuditLogs, item => item.EntityType == nameof(DailyWorkReport) && item.Action == "Updated");
+        using var old = System.Text.Json.JsonDocument.Parse(audit.OldValues!);
+        Assert.Equal(originalSummary, old.RootElement.GetProperty("Summary").GetString());
+        Assert.Equal(originalClockOut, old.RootElement.GetProperty("ClockOutAttendanceEventId").GetGuid());
+    }
+
+    [Fact]
+    public async Task DuplicateClockOut_DoesNotValidateOrReplaceOriginalSummary()
+    {
+        var existing = CreateExistingEvent(Guid.NewGuid(), AttendanceEventType.ClockOut);
+        var store = new FakeAttendanceStore { Existing = existing };
+        var result = await CreateService(store).PunchAsync(CreateRequest("ClockOut") with
+        { ClientEventId = existing.ClientEventId, DailySummary = null }, default);
+        Assert.True(result.Value!.IsDuplicate);
+        Assert.Empty(store.DailyWorkReports);
+        Assert.Empty(store.AuditLogs);
+        Assert.Equal(0, store.SaveChangesCalls);
+    }
+
     private static AttendanceService CreateService(
         FakeAttendanceStore store,
-        FakeGeolocationService? geolocation = null)
+        FakeGeolocationService? geolocation = null,
+        DateTimeOffset? now = null)
     {
         return new AttendanceService(
             store,
@@ -476,7 +573,7 @@ public class AttendanceServiceTests
             new FakeCurrentUserProvider(UserId, EmployeeId),
             geolocation ?? new FakeGeolocationService(),
             new IntegrationOutboxService(store),
-            new FixedTimeProvider(ServerNow));
+            new FixedTimeProvider(now ?? ServerNow));
     }
 
     private static AttendancePunchRequest CreateRequest(string eventType)
@@ -489,7 +586,8 @@ public class AttendanceServiceTests
             -9.139337m,
             10,
             WorkSiteId,
-            null);
+            null,
+            eventType == "ClockOut" ? "Trabalho realizado durante o dia." : null);
     }
 
     private static AttendanceEvent CreateExistingEvent(
@@ -569,6 +667,15 @@ public class AttendanceServiceTests
 
     private sealed class FakeAttendanceStore : IAttendanceStore, IIntegrationOutboxStore
     {
+        public List<DailyWorkReport> DailyWorkReports { get; } = [];
+
+        public void Add(DailyWorkReport report) => DailyWorkReports.Add(report);
+
+        public Task<DailyWorkReport?> GetDailyWorkReportAsync(
+            Guid companyId, Guid employeeId, DateOnly workDate, CancellationToken cancellationToken) =>
+            Task.FromResult(DailyWorkReports.SingleOrDefault(report => report.CompanyId == companyId
+                && report.EmployeeId == employeeId && report.WorkDate == workDate));
+
         private int getByClientEventCalls;
 
         public bool EmployeeCanPunch { get; set; } = true;

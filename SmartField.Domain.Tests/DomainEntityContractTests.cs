@@ -9,6 +9,7 @@ public class DomainEntityContractTests
     [
         typeof(IntegrationOutbox),
         typeof(ExternalReference),
+        typeof(DailyWorkReport),
         typeof(AuditLog),
         typeof(AttendanceCorrection),
         typeof(AttendanceEvent),
@@ -22,6 +23,7 @@ public class DomainEntityContractTests
     [
         typeof(IntegrationOutbox),
         typeof(ExternalReference),
+        typeof(DailyWorkReport),
         typeof(AuditLog),
         typeof(AttendanceCorrection),
         typeof(AttendanceEvent),
@@ -35,6 +37,7 @@ public class DomainEntityContractTests
     [
         typeof(IntegrationOutbox),
         typeof(ExternalReference),
+        typeof(DailyWorkReport),
         typeof(AuditLog),
         typeof(AttendanceCorrection),
         typeof(AttendanceEvent),
@@ -48,6 +51,7 @@ public class DomainEntityContractTests
     private static readonly Type[] EntitiesWithUpdatedAtUtc =
     [
         typeof(ExternalReference),
+        typeof(DailyWorkReport),
         typeof(Project),
         typeof(WorkSite),
         typeof(Employee),

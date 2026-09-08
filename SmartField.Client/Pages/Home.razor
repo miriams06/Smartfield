@@ -95,24 +95,48 @@
                     </div>
                 }
 
-                <div class="dashboard-actions" aria-label="Ações de assiduidade">
-                    @foreach (var action in GetAvailableActions())
-                    {
-                        <button class="@GetActionClass(action.EventType)"
-                                type="button"
-                                disabled="@_submitting"
-                                @onclick="() => PunchAsync(action)">
-                            @if (_submittingAction == action.EventType)
-                            {
-                                <span>A registar...</span>
-                            }
-                            else
-                            {
-                                <span>@action.Label</span>
-                            }
-                        </button>
-                    }
-                </div>
+                @if (_showDailySummary)
+                {
+                    <section class="daily-summary-form" aria-labelledby="daily-summary-heading">
+                        <h2 id="daily-summary-heading">Resumo do dia</h2>
+                        <label for="daily-summary">Descreve resumidamente o trabalho realizado hoje.</label>
+                        <textarea id="daily-summary" rows="6" maxlength="4000"
+                                  @bind="_dailySummary" @bind:event="oninput"
+                                  disabled="@_submitting" aria-describedby="daily-summary-count daily-summary-error"></textarea>
+                        <small id="daily-summary-count">@_dailySummary.Length / 4000</small>
+                        @if (DailySummaryError is not null)
+                        {
+                            <p id="daily-summary-error" class="attendance-feedback--error" role="alert">@DailySummaryError</p>
+                        }
+                        <div class="dashboard-actions">
+                            <button type="button" class="secondary-action" disabled="@_submitting"
+                                    @onclick="() => _showDailySummary = false">Cancelar</button>
+                            <button type="button" class="primary-action" disabled="@(_submitting || DailySummaryError is not null)"
+                                    @onclick="SubmitDailySummaryAsync">@(_submitting ? "A registar..." : "TERMINAR DIA")</button>
+                        </div>
+                    </section>
+                }
+                else
+                {
+                    <div class="dashboard-actions" aria-label="Ações de assiduidade">
+                        @foreach (var action in GetAvailableActions())
+                        {
+                            <button class="@GetActionClass(action.EventType)"
+                                    type="button"
+                                    disabled="@_submitting"
+                                    @onclick="() => BeginActionAsync(action)">
+                                @if (_submittingAction == action.EventType)
+                                {
+                                    <span>A registar...</span>
+                                }
+                                else
+                                {
+                                    <span>@action.Label</span>
+                                }
+                            </button>
+                        }
+                    </div>
+                }
             }
         </Authorized>
         <NotAuthorized Context="nonEmployeeContext">
@@ -126,6 +150,28 @@
 
 @code {
     private static readonly CultureInfo PortugueseCulture = new("pt-PT");
+
+    private bool _showDailySummary;
+    private string _dailySummary = string.Empty;
+    private Guid? _clockOutClientEventId;
+    private string? DailySummaryError => string.IsNullOrWhiteSpace(_dailySummary)
+        ? "O resumo do dia é obrigatório antes de registar a saída."
+        : _dailySummary.Trim().Length < 10
+            ? "O resumo do dia deve ter pelo menos 10 caracteres."
+            : _dailySummary.Length > 4000 ? "O resumo do dia não pode exceder 4000 caracteres." : null;
+
+    private Task BeginActionAsync(DashboardAction action)
+    {
+        if (_submitting) return Task.CompletedTask;
+        if (action.EventType != "ClockOut") return PunchAsync(action);
+        _showDailySummary = true;
+        _errorMessage = null;
+        _successMessage = null;
+        return Task.CompletedTask;
+    }
+
+    private Task SubmitDailySummaryAsync() => DailySummaryError is null
+        ? PunchAsync(ToDashboardAction("ClockOut")!) : Task.CompletedTask;
 
     private AttendanceStateDto? _state;
     private IReadOnlyList<AttendanceWorkSiteOptionDto> _workSites = [];
@@ -237,17 +283,25 @@
 
             var request = new AttendancePunchRequest(
                 action.EventType,
-                Guid.NewGuid(),
+                action.EventType == "ClockOut" ? (_clockOutClientEventId ??= Guid.NewGuid()) : Guid.NewGuid(),
                 DateTimeOffset.UtcNow,
                 position.IsSuccess ? position.Latitude : null,
                 position.IsSuccess ? position.Longitude : null,
                 position.IsSuccess ? position.AccuracyMeters : null,
                 selectedWorkSite?.Id,
-                null);
+                null,
+                action.EventType == "ClockOut" ? _dailySummary : null);
 
             var result = await AttendanceApiClient.PunchAsync(
                 request,
                 CancellationToken.None);
+
+            if (action.EventType == "ClockOut")
+            {
+                _showDailySummary = false;
+                _dailySummary = string.Empty;
+                _clockOutClientEventId = null;
+            }
 
             var duplicateSuffix = result.IsDuplicate
                 ? " Este pedido já tinha sido registado."

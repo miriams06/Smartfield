@@ -52,6 +52,37 @@ A aplicação valida a sequência das picagens e calcula entrada, saída, pausas
 
 Cada evento pode guardar timestamp do servidor e do cliente, latitude, longitude, precisão, local de trabalho, projeto quando aplicável, resultado da geofence e distância ao local.
 
+### Resumo diário no ClockOut
+
+Na PWA, **Registar saída** abre o ecrã **Resumo do dia**. A saída só é enviada depois
+de selecionar **TERMINAR DIA**, com um resumo de pelo menos 10 caracteres após
+`Trim()` e no máximo 4000 caracteres no total. Cancelar não regista uma picagem.
+Espaços e quebras de linha do conteúdo válido são preservados. Se o pedido falhar,
+o formulário mantém o texto e reutiliza o `ClientEventId` numa nova tentativa.
+
+O request `POST /api/attendance/punch` aceita `dailySummary`. É obrigatório para
+novos ClockOut; ClockIn, BreakStart e BreakEnd não o exigem. A validação é feita
+também em Application, independentemente do browser.
+
+O resumo fica em `DailyWorkReport`, separado de `AttendanceEvent`, com unicidade
+por `CompanyId + EmployeeId + WorkDate`. `WorkDate` é a data do timestamp do servidor
+do ClockOut na timezone da empresa; numa jornada que atravessa a meia-noite, fica
+associado ao dia da saída, tal como o evento no histórico atual.
+
+É permitido reabrir a jornada no mesmo dia. O próximo ClockOut exige novamente
+um resumo e atualiza o mesmo relatório, incluindo a ligação ao novo ClockOut e
+`SubmittedAtUtc`/`UpdatedAtUtc`. A auditoria guarda o texto e a ligação anteriores
+e novos. Repetir um `ClientEventId` já registado não altera o relatório.
+
+Picagem, relatório, AuditLog e Outbox usam a mesma transação. O resumo não é incluído
+nos logs de diagnóstico nem no payload de integração da picagem. O histórico Employee
+e o detalhe diário do backoffice apresentam o resumo em consulta. Não existe endpoint
+de edição para Manager/Admin; corrigir a hora de uma picagem não altera silenciosamente
+o texto nem a data do relatório. Dias antigos sem relatório mostram “Sem resumo submetido.”
+
+Antes de usar esta versão, aplicar a migration `AddDailyWorkReports` com o comando
+`dotnet ef database update` indicado abaixo. A migration não cria resumos para eventos antigos.
+
 ## Geolocalização e geofence
 
 Os locais de trabalho (`WorkSite`) podem ter código, nome, morada, latitude, longitude, raio de geofence, estado ativo/inativo e código de centro de custo ERP.

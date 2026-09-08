@@ -142,6 +142,15 @@ public class AttendanceTodayServiceTests
 
     private sealed class FakeAttendanceStore : IAttendanceStore, IIntegrationOutboxStore
     {
+        public List<DailyWorkReport> DailyWorkReports { get; } = [];
+
+        public void Add(DailyWorkReport report) => DailyWorkReports.Add(report);
+
+        public Task<DailyWorkReport?> GetDailyWorkReportAsync(
+            Guid companyId, Guid employeeId, DateOnly workDate, CancellationToken cancellationToken) =>
+            Task.FromResult(DailyWorkReports.SingleOrDefault(report => report.CompanyId == companyId
+                && report.EmployeeId == employeeId && report.WorkDate == workDate));
+
         public List<AttendanceEvent> Events { get; } = [];
 
         public Task<bool> EmployeeCanPunchAsync(Guid companyId, Guid employeeId, CancellationToken cancellationToken)

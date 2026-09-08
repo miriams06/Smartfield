@@ -10,7 +10,8 @@ public sealed record AttendancePunchRequest(
     decimal? Longitude,
     decimal? AccuracyMeters,
     Guid? WorkSiteId,
-    Guid? ProjectId);
+    Guid? ProjectId,
+    string? DailySummary = null);
 
 public sealed record AttendancePunchDto(
     Guid Id,
@@ -68,7 +69,8 @@ public sealed record AttendanceDayDetailDto(
     string CurrentStatus,
     IReadOnlyList<string> NextAllowedActions,
     bool HasOutsideGeofence,
-    IReadOnlyList<AttendanceHistoryEventDto> Events);
+    IReadOnlyList<AttendanceHistoryEventDto> Events,
+    string? DailySummary = null);
 
 public sealed record AttendanceBackofficeDayDto(
     string Date,
@@ -104,7 +106,8 @@ public sealed record AttendanceBackofficeDayDetailDto(
     string CurrentStatus,
     string CurrentStatusLabel,
     bool HasOutsideGeofence,
-    IReadOnlyList<AttendanceBackofficeEventDto> Events);
+    IReadOnlyList<AttendanceBackofficeEventDto> Events,
+    string? DailySummary = null);
 
 public sealed record AttendanceBackofficeEventDto(
     Guid Id,

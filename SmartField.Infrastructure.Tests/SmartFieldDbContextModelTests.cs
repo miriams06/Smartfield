@@ -49,6 +49,7 @@ public class SmartFieldDbContextModelTests
         Assert.NotNull(context.WorkSites);
         Assert.NotNull(context.Projects);
         Assert.NotNull(context.AttendanceEvents);
+        Assert.NotNull(context.DailyWorkReports);
         Assert.NotNull(context.AttendanceCorrections);
         Assert.NotNull(context.AuditLogs);
         Assert.NotNull(context.ExternalReferences);
@@ -61,6 +62,7 @@ public class SmartFieldDbContextModelTests
         using var context = CreateContext();
         var model = context.Model;
 
+        AssertHasIndex(model.FindEntityType(typeof(DailyWorkReport))!, true, "CompanyId", "EmployeeId", "WorkDate");
         AssertHasIndex(model.FindEntityType(typeof(ApplicationUser))!, true, "CompanyId", "NormalizedEmail");
         AssertHasIndex(model.FindEntityType(typeof(AttendanceEvent))!, false, "CompanyId", "EmployeeId", "ServerTimestampUtc");
         AssertHasIndex(model.FindEntityType(typeof(AttendanceEvent))!, true, "ClientEventId");
@@ -81,6 +83,7 @@ public class SmartFieldDbContextModelTests
             typeof(WorkSite),
             typeof(Project),
             typeof(AttendanceEvent),
+            typeof(DailyWorkReport),
             typeof(AttendanceCorrection),
             typeof(AuditLog),
             typeof(ExternalReference),
@@ -108,6 +111,7 @@ public class SmartFieldDbContextModelTests
             typeof(WorkSite),
             typeof(Project),
             typeof(AttendanceEvent),
+            typeof(DailyWorkReport),
             typeof(AttendanceCorrection),
             typeof(AuditLog),
             typeof(ExternalReference),

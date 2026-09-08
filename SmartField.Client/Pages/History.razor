@@ -105,6 +105,11 @@
                                     <p class="muted">@FormatDayWorkSites(_detail.Events)</p>
                                 </div>
 
+                                <div class="history-detail__section">
+                                    <h2>Resumo do dia</h2>
+                                    <p class="daily-summary-text">@(_detail.DailySummary ?? "Sem resumo submetido.")</p>
+                                </div>
+
                                 @if (_detail.Breaks.Count > 0)
                                 {
                                     <div class="history-detail__section">

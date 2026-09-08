@@ -134,3 +134,8 @@
         grid-column: 1 / -1;
     }
 }
+
+.daily-summary-form { display: grid; gap: 0.8rem; margin-top: 1rem; }
+.daily-summary-form h2 { font-size: 1.4rem; }
+.daily-summary-form textarea { width: 100%; padding: 0.8rem; border: 1px solid #64748b; border-radius: 0.6rem; font: inherit; resize: vertical; }
+.daily-summary-form small { text-align: right; }
