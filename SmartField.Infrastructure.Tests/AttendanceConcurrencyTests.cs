@@ -43,8 +43,8 @@ public class AttendanceConcurrencyTests
                     () => firstService.PunchAsync(firstRequest, CancellationToken.None),
                     () => secondService.PunchAsync(secondRequest, CancellationToken.None));
 
-                Assert.Single(results.Where(result => result.IsSuccess));
-                Assert.Single(results.Where(result => result.Error == AttendanceError.InvalidSequence));
+                Assert.Single(results, result => result.IsSuccess);
+                Assert.Single(results, result => result.Error == AttendanceError.InvalidSequence);
             }
 
             await using var assertionContext = CreateContext(connectionString);
@@ -83,8 +83,8 @@ public class AttendanceConcurrencyTests
                     () => firstService.PunchAsync(firstRequest, CancellationToken.None),
                     () => secondService.PunchAsync(secondRequest, CancellationToken.None));
 
-                Assert.Single(results.Where(result => result.IsSuccess));
-                Assert.Single(results.Where(result => result.Error == AttendanceError.InvalidSequence));
+                Assert.Single(results, result => result.IsSuccess);
+                Assert.Single(results, result => result.Error == AttendanceError.InvalidSequence);
             }
 
             await using var assertionContext = CreateContext(connectionString);
@@ -125,8 +125,8 @@ public class AttendanceConcurrencyTests
                     () => secondService.PunchAsync(secondRequest, CancellationToken.None));
 
                 Assert.All(results, result => Assert.True(result.IsSuccess));
-                Assert.Single(results.Where(result => result.Value?.IsDuplicate == false));
-                Assert.Single(results.Where(result => result.Value?.IsDuplicate == true));
+                Assert.Single(results, result => result.Value?.IsDuplicate == false);
+                Assert.Single(results, result => result.Value?.IsDuplicate == true);
             }
 
             await using var assertionContext = CreateContext(connectionString);
