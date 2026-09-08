@@ -62,14 +62,20 @@ public sealed class AttendanceService : IAttendanceService
         var calculatedAtUtc = timeProvider.GetUtcNow();
         var companyTimeZone = GetCompanyTimeZone(employee.CompanyTimeZone);
         var companyNow = TimeZoneInfo.ConvertTime(calculatedAtUtc, companyTimeZone);
-        var localMidnight = new DateTimeOffset(
-            companyNow.Date,
-            companyNow.Offset);
-        var todayEvents = await attendanceStore.GetEventsFromAsync(
+        var companyDate = DateOnly.FromDateTime(companyNow.Date);
+        var dayStartUtc = ConvertLocalDateToUtc(companyDate, companyTimeZone);
+        var nextDayStartUtc = ConvertLocalDateToUtc(
+            companyDate.AddDays(1),
+            companyTimeZone);
+        var loadedEvents = await attendanceStore.GetEventsFromAsync(
             context.CompanyId,
             context.EmployeeId,
-            localMidnight.ToUniversalTime(),
+            dayStartUtc,
             cancellationToken);
+        var todayEvents = loadedEvents
+            .Where(attendanceEvent => attendanceEvent.ServerTimestampUtc < nextDayStartUtc)
+            .Pipe(OrderEvents)
+            .ToArray();
 
         return AttendanceResult<AttendanceStateDto>.Success(
             BuildState(
@@ -103,17 +109,20 @@ public sealed class AttendanceService : IAttendanceService
         var calculatedAtUtc = timeProvider.GetUtcNow();
         var companyTimeZone = GetCompanyTimeZone(employee.CompanyTimeZone);
         var companyNow = TimeZoneInfo.ConvertTime(calculatedAtUtc, companyTimeZone);
-        var localMidnight = new DateTimeOffset(companyNow.Date, companyNow.Offset);
-        var nextLocalMidnight = localMidnight.AddDays(1);
+        var companyDate = DateOnly.FromDateTime(companyNow.Date);
+        var dayStartUtc = ConvertLocalDateToUtc(companyDate, companyTimeZone);
+        var nextDayStartUtc = ConvertLocalDateToUtc(
+            companyDate.AddDays(1),
+            companyTimeZone);
 
         var loadedEvents = await attendanceStore.GetEventsFromAsync(
             context.CompanyId,
             context.EmployeeId,
-            localMidnight.ToUniversalTime(),
+            dayStartUtc,
             cancellationToken);
         var todayEvents = loadedEvents
             .Where(attendanceEvent =>
-                attendanceEvent.ServerTimestampUtc < nextLocalMidnight.ToUniversalTime())
+                attendanceEvent.ServerTimestampUtc < nextDayStartUtc)
             .OrderBy(attendanceEvent => attendanceEvent.ServerTimestampUtc)
             .ThenBy(attendanceEvent => attendanceEvent.CreatedAtUtc)
             .ThenBy(attendanceEvent => attendanceEvent.Id)
