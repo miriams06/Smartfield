@@ -57,15 +57,20 @@
             var success = await Authentication.LoginAsync(model.Email, model.Password, CancellationToken.None);
             if (!success)
             {
-                errorMessage = "Email ou password inválidos.";
+                errorMessage = "Email ou password incorretos.";
                 return;
             }
 
             Navigation.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "/" : ReturnUrl);
         }
-        catch (HttpRequestException)
+        catch (SmartFieldApiException exception)
         {
-            errorMessage = "Não foi possível contactar a API SmartField.";
+            errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+            when (exception is HttpRequestException or TaskCanceledException)
+        {
+            errorMessage = ClientHttpErrorMessages.FromException(exception);
         }
         finally
         {

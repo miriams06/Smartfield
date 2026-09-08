@@ -156,13 +156,19 @@ public sealed record AttendanceHistoryEventDto(
 
 public sealed class AttendanceApiException : Exception
 {
-    public AttendanceApiException(HttpStatusCode statusCode, string message)
+    public AttendanceApiException(
+        HttpStatusCode statusCode,
+        string message,
+        string? correlationId = null)
         : base(message)
     {
         StatusCode = statusCode;
+        CorrelationId = correlationId;
     }
 
     public HttpStatusCode StatusCode { get; }
+
+    public string? CorrelationId { get; }
 }
 
 internal sealed class AttendanceProblemDetails

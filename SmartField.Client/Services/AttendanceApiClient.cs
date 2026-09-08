@@ -1,6 +1,5 @@
-using System.Net.Http.Json;
 using System.Net.Http.Headers;
-using System.Text.Json;
+using System.Net.Http.Json;
 using SmartField.Client.Attendance;
 
 namespace SmartField.Client.Services;
@@ -122,7 +121,11 @@ public sealed class AttendanceApiClient
 
         if (!response.IsSuccessStatusCode)
         {
-            throw await CreateExceptionAsync(response, cancellationToken);
+            throw await ApiResponseReader.CreateExceptionAsync(
+                response,
+                static (statusCode, message, correlationId) =>
+                    new AttendanceApiException(statusCode, message, correlationId),
+                cancellationToken);
         }
 
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -177,61 +180,16 @@ public sealed class AttendanceApiClient
             cancellationToken);
     }
 
-    private static async Task<T> ReadRequiredAsync<T>(
+    private static Task<T> ReadRequiredAsync<T>(
         HttpResponseMessage response,
         CancellationToken cancellationToken)
         where T : class
     {
-        if (!response.IsSuccessStatusCode)
-        {
-            throw await CreateExceptionAsync(response, cancellationToken);
-        }
-
-        try
-        {
-            var value = await response.Content.ReadFromJsonAsync<T>(
-                cancellationToken: cancellationToken);
-
-            return value ?? throw new AttendanceApiException(
-                response.StatusCode,
-                "A API devolveu uma resposta vazia.");
-        }
-        catch (Exception exception)
-            when (exception is JsonException or NotSupportedException)
-        {
-            throw new AttendanceApiException(
-                response.StatusCode,
-                "A API devolveu uma resposta inválida.");
-        }
-    }
-
-    private static async Task<AttendanceApiException> CreateExceptionAsync(
-        HttpResponseMessage response,
-        CancellationToken cancellationToken)
-    {
-        AttendanceProblemDetails? problem = null;
-
-        try
-        {
-            problem = await response.Content.ReadFromJsonAsync<AttendanceProblemDetails>(
-                cancellationToken: cancellationToken);
-        }
-        catch (Exception exception)
-            when (exception is JsonException or NotSupportedException)
-        {
-            // Algumas falhas de infraestrutura podem não devolver ProblemDetails.
-        }
-
-        var validationMessage = problem?.Errors?
-            .SelectMany(pair => pair.Value)
-            .FirstOrDefault();
-
-        var message = validationMessage
-            ?? problem?.Detail
-            ?? problem?.Title
-            ?? $"O pedido de assiduidade falhou com o estado {(int)response.StatusCode}.";
-
-        return new AttendanceApiException(response.StatusCode, message);
+        return ApiResponseReader.ReadRequiredAsync<T, AttendanceApiException>(
+            response,
+            static (statusCode, message, correlationId) =>
+                new AttendanceApiException(statusCode, message, correlationId),
+            cancellationToken);
     }
 
     private static string? GetFileName(ContentDispositionHeaderValue? contentDisposition)

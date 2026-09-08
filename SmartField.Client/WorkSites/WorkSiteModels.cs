@@ -112,11 +112,17 @@ public sealed record WorkSiteApiProblemDetails(
 
 public sealed class WorkSiteApiException : Exception
 {
-    public WorkSiteApiException(HttpStatusCode statusCode, string message)
+    public WorkSiteApiException(
+        HttpStatusCode statusCode,
+        string message,
+        string? correlationId = null)
         : base(message)
     {
         StatusCode = statusCode;
+        CorrelationId = correlationId;
     }
 
     public HttpStatusCode StatusCode { get; }
+
+    public string? CorrelationId { get; }
 }

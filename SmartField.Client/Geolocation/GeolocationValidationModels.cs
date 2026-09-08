@@ -68,11 +68,17 @@ public sealed record GeolocationApiProblemDetails(
 
 public sealed class GeolocationApiException : Exception
 {
-    public GeolocationApiException(HttpStatusCode statusCode, string message)
+    public GeolocationApiException(
+        HttpStatusCode statusCode,
+        string message,
+        string? correlationId = null)
         : base(message)
     {
         StatusCode = statusCode;
+        CorrelationId = correlationId;
     }
 
     public HttpStatusCode StatusCode { get; }
+
+    public string? CorrelationId { get; }
 }

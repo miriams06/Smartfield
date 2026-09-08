@@ -127,11 +127,17 @@ public sealed record ProjectApiProblemDetails(
 
 public sealed class ProjectApiException : Exception
 {
-    public ProjectApiException(HttpStatusCode statusCode, string message)
+    public ProjectApiException(
+        HttpStatusCode statusCode,
+        string message,
+        string? correlationId = null)
         : base(message)
     {
         StatusCode = statusCode;
+        CorrelationId = correlationId;
     }
 
     public HttpStatusCode StatusCode { get; }
+
+    public string? CorrelationId { get; }
 }

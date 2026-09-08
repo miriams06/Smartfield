@@ -20,9 +20,12 @@ public sealed class AuthenticationService
         this.authenticationStateProvider = authenticationStateProvider;
     }
 
-    public async Task<bool> LoginAsync(string email, string password, CancellationToken cancellationToken)
+    public async Task<bool> LoginAsync(
+        string email,
+        string password,
+        CancellationToken cancellationToken)
     {
-        var response = await httpClient.PostAsJsonAsync(
+        using var response = await httpClient.PostAsJsonAsync(
             "api/auth/login",
             new LoginRequest(email, password),
             cancellationToken);
@@ -32,12 +35,15 @@ public sealed class AuthenticationService
             return false;
         }
 
-        response.EnsureSuccessStatusCode();
+        var login = await ApiResponseReader.ReadRequiredAsync<LoginResponse>(
+            response,
+            cancellationToken);
 
-        var login = await response.Content.ReadFromJsonAsync<LoginResponse>(cancellationToken);
-        if (login is null || string.IsNullOrWhiteSpace(login.AccessToken))
+        if (string.IsNullOrWhiteSpace(login.AccessToken))
         {
-            return false;
+            throw new SmartFieldApiException(
+                response.StatusCode,
+                "A API devolveu uma resposta inválida.");
         }
 
         await tokenStore.SetTokenAsync(login.AccessToken);
@@ -52,17 +58,21 @@ public sealed class AuthenticationService
         authenticationStateProvider.NotifyUserSignedOut();
     }
 
-    public async Task<CurrentUserResponse?> GetCurrentUserAsync(CancellationToken cancellationToken)
+    public async Task<CurrentUserResponse?> GetCurrentUserAsync(
+        CancellationToken cancellationToken)
     {
-        var response = await httpClient.GetAsync("api/auth/me", cancellationToken);
+        using var response = await httpClient.GetAsync(
+            "api/auth/me",
+            cancellationToken);
+
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             await LogoutAsync();
             return null;
         }
 
-        response.EnsureSuccessStatusCode();
-
-        return await response.Content.ReadFromJsonAsync<CurrentUserResponse>(cancellationToken);
+        return await ApiResponseReader.ReadRequiredAsync<CurrentUserResponse>(
+            response,
+            cancellationToken);
     }
 }
