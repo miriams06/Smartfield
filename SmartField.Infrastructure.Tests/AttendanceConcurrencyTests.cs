@@ -307,13 +307,13 @@ public class AttendanceConcurrencyTests
         await using var context = CreateContext(connectionString);
         await context.Database.MigrateAsync();
 
-        return await context.Employees
-            .AsNoTracking()
-            .Where(employee =>
-                employee.CompanyId == CompanyId
-                && employee.EmployeeNumber == "FUNC001")
-            .Select(employee => employee.Id)
-            .SingleAsync();
+        var employee = await context.Employees.SingleAsync(employee =>
+            employee.CompanyId == CompanyId && employee.EmployeeNumber == "FUNC001");
+        var workSite = new WorkSite { CompanyId = CompanyId, Code = "TEST", Name = "Test worksite" };
+        context.WorkSites.Add(workSite);
+        employee.DefaultWorkSiteId = workSite.Id;
+        await context.SaveChangesAsync();
+        return employee.Id;
     }
 
     private static async Task SeedClockInAsync(

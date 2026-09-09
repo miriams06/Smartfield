@@ -20,7 +20,8 @@ public sealed record GeofenceValidationReference(
     bool RequireGeolocation,
     GeofenceMode GeofenceMode,
     int DefaultGeofenceRadiusMeters,
-    WorkSiteGeofenceReference? WorkSite);
+    WorkSiteGeofenceReference? WorkSite,
+    int MaximumLocationAccuracyMeters = 100);
 
 public sealed record WorkSiteGeofenceReference(
     Guid Id,
@@ -33,12 +34,14 @@ public sealed record GeofenceSettingsDto(
     GeofenceMode GeofenceMode,
     int DefaultGeofenceRadiusMeters,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? UpdatedAtUtc);
+    DateTimeOffset? UpdatedAtUtc,
+    int MaximumLocationAccuracyMeters = 100);
 
 public sealed record UpdateGeofenceSettingsRequest(
     bool RequireGeolocation,
     GeofenceMode GeofenceMode,
-    int DefaultGeofenceRadiusMeters);
+    int DefaultGeofenceRadiusMeters,
+    int MaximumLocationAccuracyMeters = 100);
 
 public enum GeolocationError
 {

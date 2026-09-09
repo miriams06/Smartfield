@@ -13,6 +13,8 @@ public class CompanySettingsConfiguration : IEntityTypeConfiguration<CompanySett
 
         builder.HasKey(settings => settings.CompanyId);
 
+        builder.Property(settings => settings.MaximumLocationAccuracyMeters).HasDefaultValue(100);
+
         builder.HasOne<Company>()
             .WithOne()
             .HasForeignKey<CompanySettings>(settings => settings.CompanyId)

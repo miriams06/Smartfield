@@ -29,12 +29,14 @@ public sealed record GeofenceSettingsDto(
     GeofenceMode GeofenceMode,
     int DefaultGeofenceRadiusMeters,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? UpdatedAtUtc);
+    DateTimeOffset? UpdatedAtUtc,
+    int MaximumLocationAccuracyMeters = 100);
 
 public sealed record UpdateGeofenceSettingsRequest(
     bool RequireGeolocation,
     GeofenceMode GeofenceMode,
-    int DefaultGeofenceRadiusMeters);
+    int DefaultGeofenceRadiusMeters,
+    int MaximumLocationAccuracyMeters = 100);
 
 public sealed class GeofenceSettingsEditorModel
 {
@@ -45,11 +47,15 @@ public sealed class GeofenceSettingsEditorModel
     [Range(1, 10000, ErrorMessage = "O raio por defeito deve estar entre 1 e 10000 metros.")]
     public int DefaultGeofenceRadiusMeters { get; set; } = 100;
 
+    [Range(1, 10000, ErrorMessage = "A precisão máxima aceitável deve estar entre 1 e 10000 metros.")]
+    public int MaximumLocationAccuracyMeters { get; set; } = 100;
+
     public void Load(GeofenceSettingsDto settings)
     {
         RequireGeolocation = settings.RequireGeolocation;
         GeofenceMode = settings.GeofenceMode;
         DefaultGeofenceRadiusMeters = settings.DefaultGeofenceRadiusMeters;
+        MaximumLocationAccuracyMeters = settings.MaximumLocationAccuracyMeters;
     }
 
     public UpdateGeofenceSettingsRequest ToUpdateRequest()
@@ -57,7 +63,8 @@ public sealed class GeofenceSettingsEditorModel
         return new UpdateGeofenceSettingsRequest(
             RequireGeolocation,
             GeofenceMode,
-            DefaultGeofenceRadiusMeters);
+            DefaultGeofenceRadiusMeters,
+            MaximumLocationAccuracyMeters);
     }
 }
 

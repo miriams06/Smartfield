@@ -550,3 +550,17 @@ Não incluir no repositório passwords, tokens, API keys, segredos JWT, connecti
 Login and every authenticated API request check the current Identity account and its linked Employee in the database. Both must be active, and the employee must belong to the account's company. Deactivating an Employee therefore blocks previously issued JWTs on subsequent requests, including punches and operational reads. This also applies to linked Manager and Admin accounts. An Admin without an Employee association remains supported.
 
 The Employee and Identity account are preserved. Their active flags remain independent: reactivating an Employee only restores access if the Identity account itself is active. Employee updates retain the existing AuditLog `Updated` entry with the previous and new `IsActive` values. Tokens whose company or employee association no longer matches the account are rejected; log in again after changing associations.
+
+### GPS accuracy before geofence validation
+
+Company geolocation settings include `MaximumLocationAccuracyMeters` (default: 100 metres; valid range: 1–10000). Admin/Manager can edit this in **Locais de trabalho → Configuração de localização**. The API uses the authenticated Company when reading and updating the limit.
+
+In Warning and Block modes, coordinates with missing accuracy or accuracy above the limit are rejected before calculating the geofence. Accuracy equal to the limit is accepted for geofence evaluation. The result is `LocationAccuracyInsufficient`, with no inside/outside classification or distance. No attendance event or daily work report is saved for a rejected attempt. Disabled mode retains its existing behaviour.
+
+The PWA displays: “A localização ainda não tem precisão suficiente. Aguarda alguns segundos e tenta novamente.” Use the same punch/finish-day button to retry; each attempt requests a fresh GPS position. A ClockOut retry preserves the daily summary and ClientEventId.
+
+Apply the `AddMaximumLocationAccuracy` migration before running the updated API. Existing company settings receive a 100-metre limit. Rolling this migration back removes the configured accuracy limits.
+
+Attendance punches require a selected WorkSite or an Employee DefaultWorkSite. If neither exists, the PWA asks the employee to select a worksite and the API rejects the request without persisting events. A default-worksite message is only displayed when a default actually exists.
+
+Demo worksites now include illustrative coordinates and a 200 m radius: SYS-SEDE (38.722300, -9.139300), SYS-ARM (38.730000, -9.145000), OBR-001 (41.149610, -8.610990), and AVAC-SEDE (41.160000, -8.620000). These are test positions, not verified business addresses. Adapt them in the backoffice for on-site GPS tests. On the next Development seed run, existing demo sites with both coordinates missing are filled; configured coordinates and radii are preserved. The existing seed password configuration is still required. The seed does not change the company's geofence mode.

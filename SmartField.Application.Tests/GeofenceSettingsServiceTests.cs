@@ -98,6 +98,32 @@ public class GeofenceSettingsServiceTests
         Assert.Equal(GeolocationError.CompanyUnavailable, result.Error);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(10001)]
+    public async Task UpdateAsync_RejectsInvalidAccuracyLimit(int maximum)
+    {
+        var store = new FakeGeofenceSettingsStore();
+        var result = await CreateService(store).UpdateAsync(new(false, GeofenceMode.Warning, 100, maximum), default);
+        Assert.Equal(GeolocationError.Validation, result.Error);
+        Assert.Contains(nameof(UpdateGeofenceSettingsRequest.MaximumLocationAccuracyMeters), result.ValidationErrors.Keys);
+        Assert.Equal(0, store.SaveChangesCalls);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_PersistsAndReturnsCompanyAccuracyLimit()
+    {
+        var store = new FakeGeofenceSettingsStore();
+        var service = CreateService(store);
+        Assert.Equal(100, (await service.GetAsync(default)).Value!.MaximumLocationAccuracyMeters);
+        var result = await service.UpdateAsync(new(true, GeofenceMode.Block, 100, 35), default);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(35, store.Settings.MaximumLocationAccuracyMeters);
+        Assert.Equal(35, result.Value!.MaximumLocationAccuracyMeters);
+        Assert.Equal(35, (await service.GetAsync(default)).Value!.MaximumLocationAccuracyMeters);
+    }
+
     private static GeofenceSettingsService CreateService(
         FakeGeofenceSettingsStore store)
     {

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SmartField.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using SmartField.Infrastructure.Persistence;
 namespace SmartField.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SmartFieldDbContext))]
-    partial class SmartFieldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260909090945_AddMaximumLocationAccuracy")]
+    partial class AddMaximumLocationAccuracy
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

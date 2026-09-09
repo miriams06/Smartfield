@@ -181,6 +181,48 @@ public class DevelopmentDataSeederTests
         });
     }
 
+    [SqlServerIntegrationFact]
+    [Trait("Category", "Integration")]
+    public async Task Seed_FillsMissingDemoCoordinates_AndPreservesConfiguredLocations()
+    {
+        await WithDatabaseAsync(async services =>
+        {
+            var db = services.GetRequiredService<SmartFieldDbContext>();
+            var configuration = Configuration();
+            await SeedAsync(services, configuration);
+            var sites = await db.WorkSites.IgnoreQueryFilters().ToDictionaryAsync(x => x.Code);
+            Assert.All(sites.Values, site =>
+            {
+                Assert.NotNull(site.Latitude);
+                Assert.NotNull(site.Longitude);
+                Assert.Equal(200, site.GeofenceRadiusMeters);
+            });
+            var empty = sites["OBR-001"];
+            empty.Latitude = null;
+            empty.Longitude = null;
+            empty.GeofenceRadiusMeters = 350;
+            var configured = sites["SYS-ARM"];
+            configured.Latitude = 40m;
+            configured.Longitude = -20m;
+            configured.GeofenceRadiusMeters = 500;
+            var partial = sites["AVAC-SEDE"];
+            partial.Longitude = null;
+            await db.SaveChangesAsync();
+            await SeedAsync(services, configuration);
+            await SeedAsync(services, configuration);
+            db.ChangeTracker.Clear();
+            sites = await db.WorkSites.IgnoreQueryFilters().ToDictionaryAsync(x => x.Code);
+            Assert.Equal(4, sites.Count);
+            Assert.Equal(41.149610m, sites["OBR-001"].Latitude);
+            Assert.Equal(-8.610990m, sites["OBR-001"].Longitude);
+            Assert.Equal(350, sites["OBR-001"].GeofenceRadiusMeters);
+            Assert.Equal(40m, sites["SYS-ARM"].Latitude);
+            Assert.Equal(-20m, sites["SYS-ARM"].Longitude);
+            Assert.Equal(500, sites["SYS-ARM"].GeofenceRadiusMeters);
+            Assert.Null(sites["AVAC-SEDE"].Longitude);
+        });
+    }
+
     private static Task SeedAsync(IServiceProvider services, IConfiguration configuration) =>
         DevelopmentDataSeeder.SeedAsync(services, new TestEnvironment("Development"), configuration);
 

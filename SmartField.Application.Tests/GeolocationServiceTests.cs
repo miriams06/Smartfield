@@ -209,6 +209,62 @@ public class GeolocationServiceTests
         Assert.Null(store.LastCompanyId);
     }
 
+    [Theory]
+    [InlineData(GeofenceMode.Warning, null)]
+    [InlineData(GeofenceMode.Block, null)]
+    [InlineData(GeofenceMode.Warning, 900)]
+    [InlineData(GeofenceMode.Block, 900)]
+    public async Task ValidateAsync_UnreliableAccuracyDoesNotClassifyInsideOrOutside(GeofenceMode mode, int? accuracy)
+    {
+        var store = new FakeGeolocationStore { Reference = CreateReference(mode) };
+        foreach (var latitude in new[] { 38.722252m, 41.149610m })
+        {
+            var result = await CreateService(store).ValidateAsync(
+                new(latitude, -9.139337m, accuracy, WorkSiteId), default);
+            Assert.True(result.IsSuccess);
+            Assert.False(result.Value!.IsAccepted);
+            Assert.Null(result.Value.IsInsideGeofence);
+            Assert.Null(result.Value.DistanceFromWorkSiteMeters);
+            Assert.Equal("LocationAccuracyInsufficient", result.Value.ResultCode);
+            Assert.Equal("A localização ainda não tem precisão suficiente. Aguarda alguns segundos e tenta novamente.", result.Value.Message);
+        }
+    }
+
+    [Theory]
+    [InlineData(GeofenceMode.Warning, 0, true)]
+    [InlineData(GeofenceMode.Warning, 100, true)]
+    [InlineData(GeofenceMode.Warning, 101, false)]
+    [InlineData(GeofenceMode.Block, 0, true)]
+    [InlineData(GeofenceMode.Block, 100, true)]
+    [InlineData(GeofenceMode.Block, 101, false)]
+    public async Task ValidateAsync_AcceptsAccuracyAtOrBelowLimit(GeofenceMode mode, int accuracy, bool accepted)
+    {
+        var store = new FakeGeolocationStore { Reference = CreateReference(mode) };
+        var result = await CreateService(store).ValidateAsync(new(38.722252m, -9.139337m, accuracy, WorkSiteId), default);
+        Assert.Equal(accepted, result.Value!.IsAccepted);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_UsesConfiguredAccuracyLimit()
+    {
+        var store = new FakeGeolocationStore { Reference = CreateReference(GeofenceMode.Block) with { MaximumLocationAccuracyMeters = 25 } };
+        var service = CreateService(store);
+        Assert.False((await service.ValidateAsync(new(38.722252m, -9.139337m, 30, WorkSiteId), default)).Value!.IsAccepted);
+        store.Reference = store.Reference with { MaximumLocationAccuracyMeters = 50 };
+        Assert.True((await service.ValidateAsync(new(38.722252m, -9.139337m, 30, WorkSiteId), default)).Value!.IsAccepted);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(900)]
+    public async Task ValidateAsync_DisabledPreservesAcceptanceWithUnreliableAccuracy(int? accuracy)
+    {
+        var store = new FakeGeolocationStore { Reference = CreateReference(GeofenceMode.Disabled) };
+        var result = await CreateService(store).ValidateAsync(new(38.722252m, -9.139337m, accuracy, WorkSiteId), default);
+        Assert.True(result.Value!.IsAccepted);
+        Assert.Null(result.Value.IsInsideGeofence);
+    }
+
     private static GeolocationService CreateService(FakeGeolocationStore store)
     {
         return new GeolocationService(

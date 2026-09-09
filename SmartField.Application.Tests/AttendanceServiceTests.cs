@@ -562,9 +562,54 @@ public class AttendanceServiceTests
         Assert.Equal(0, store.SaveChangesCalls);
     }
 
+    [Theory]
+    [InlineData(GeofenceMode.Warning)]
+    [InlineData(GeofenceMode.Block)]
+    public async Task PunchAsync_ImpreciseGpsWritesNothing_AndRetryWithFreshPositionSucceeds(GeofenceMode mode)
+    {
+        var store = new FakeAttendanceStore { LastEventType = AttendanceEventType.ClockIn };
+        var geolocation = new GeolocationService(new AccuracyGeolocationStore(mode), new FakeCurrentCompanyProvider(CompanyId));
+        var service = CreateService(store, geolocation);
+        var request = CreateRequest("ClockOut") with { AccuracyMeters = 900 };
+        var result = await service.PunchAsync(request, default);
+        Assert.Equal(AttendanceError.GeofenceRejected, result.Error);
+        Assert.Contains("precisão suficiente", result.Detail);
+        Assert.Empty(store.AttendanceEvents);
+        Assert.Empty(store.DailyWorkReports);
+        Assert.Empty(store.AuditLogs);
+        Assert.Empty(store.OutboxItems);
+        Assert.Equal(0, store.SaveChangesCalls);
+        var retry = await service.PunchAsync(request with { AccuracyMeters = 10 }, default);
+        Assert.True(retry.IsSuccess);
+        Assert.Single(store.AttendanceEvents);
+        Assert.Single(store.DailyWorkReports);
+    }
+
+    private sealed class AccuracyGeolocationStore(GeofenceMode mode) : IGeolocationStore
+    {
+        public Task<GeofenceValidationReference?> GetValidationReferenceAsync(Guid companyId, Guid? workSiteId, CancellationToken cancellationToken) =>
+            Task.FromResult<GeofenceValidationReference?>(new(false, mode, 100,
+                new(WorkSiteId, 38.722252m, -9.139337m, 100)));
+    }
+
+    [Fact]
+    public async Task PunchAsync_RequiresWorkSiteWhenEmployeeHasNoDefault()
+    {
+        var store = new FakeAttendanceStore { EmployeeDefaultWorkSiteId = null };
+        var service = CreateService(store);
+        var result = await service.PunchAsync(CreateRequest("ClockIn") with { WorkSiteId = null }, default);
+        Assert.Equal(AttendanceError.Validation, result.Error);
+        Assert.Contains(nameof(AttendancePunchRequest.WorkSiteId), result.ValidationErrors.Keys);
+        Assert.Empty(store.AttendanceEvents);
+        Assert.Empty(store.AuditLogs);
+        Assert.Empty(store.OutboxItems);
+        Assert.Equal(0, store.SaveChangesCalls);
+        Assert.True((await service.PunchAsync(CreateRequest("ClockIn"), default)).IsSuccess);
+    }
+
     private static AttendanceService CreateService(
         FakeAttendanceStore store,
-        FakeGeolocationService? geolocation = null,
+        IGeolocationService? geolocation = null,
         DateTimeOffset? now = null)
     {
         return new AttendanceService(
@@ -679,6 +724,7 @@ public class AttendanceServiceTests
         private int getByClientEventCalls;
 
         public bool EmployeeCanPunch { get; set; } = true;
+        public Guid? EmployeeDefaultWorkSiteId { get; set; } = WorkSiteId;
 
         public bool ProjectExists { get; set; } = true;
 
@@ -783,7 +829,7 @@ public class AttendanceServiceTests
                         EmployeeId,
                         "Funcionario Demo",
                         "Europe/Lisbon",
-                        WorkSiteId)
+                        EmployeeDefaultWorkSiteId)
                     : null;
 
             return Task.FromResult(employee);

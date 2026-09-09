@@ -686,6 +686,13 @@ public sealed class AttendanceService : IAttendanceService
         }
 
         var effectiveWorkSiteId = request.WorkSiteId ?? context.DefaultWorkSiteId;
+        if (!effectiveWorkSiteId.HasValue)
+        {
+            return AttendanceResult<AttendancePunchDto>.Invalid(new Dictionary<string, string[]>
+            {
+                [nameof(request.WorkSiteId)] = ["Seleciona um local de trabalho antes de registar a picagem."]
+            });
+        }
 
         var geolocationResult = await geolocationService.ValidateAsync(
             new GeolocationValidationRequest(

@@ -53,6 +53,15 @@
                     <ValidationMessage For="@(() => geofenceSettingsEditor.DefaultGeofenceRadiusMeters)" />
                 </label>
 
+                <label>
+                    Precisão GPS máxima aceitável (m)
+                    <InputNumber class="form-control" @bind-Value="geofenceSettingsEditor.MaximumLocationAccuracyMeters" />
+                    <ValidationMessage For="@(() => geofenceSettingsEditor.MaximumLocationAccuracyMeters)" />
+                    <small>Com geofence ativa, uma precisão acima deste limite exige nova tentativa.</small>
+                </label>
+
+            </div>
+            <div class="geofence-settings-actions">
                 <label class="geofence-required-field">
                     <InputCheckbox @bind-Value="geofenceSettingsEditor.RequireGeolocation" />
                     Exigir localização na picagem

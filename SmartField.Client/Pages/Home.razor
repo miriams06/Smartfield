@@ -55,7 +55,7 @@
                         }
                     </select>
                     <small>
-                        Seleciona o local onde estás a trabalhar. Se existir um local habitual, ele é selecionado automaticamente.
+                        É obrigatório indicar um local de trabalho. Se existir um local habitual, ele é selecionado automaticamente.
                     </small>
                 </div>
 
@@ -276,6 +276,12 @@
                 ? _workSites.FirstOrDefault(workSite => workSite.Id == _selectedWorkSiteId.Value)
                 : null;
 
+            if (selectedWorkSite is null && !_defaultWorkSiteId.HasValue)
+            {
+                _errorMessage = "Seleciona um local de trabalho antes de registar a picagem.";
+                return;
+            }
+
             var position = await BrowserGeolocationService.GetCurrentPositionAsync(
                 CancellationToken.None);
 
@@ -316,12 +322,14 @@
             _successMessage =
                 $"{action.CompletedMessage} às {result.ServerTimestampUtc.ToLocalTime():HH:mm}.{workSiteSuffix}{duplicateSuffix}";
 
-            if (selectedWorkSite?.Id == _defaultWorkSiteId)
+            if (selectedWorkSite is not null && _defaultWorkSiteId.HasValue
+                && selectedWorkSite.Id == _defaultWorkSiteId.Value)
             {
                 AddWarning(
                     "A picagem está a usar o teu local de trabalho habitual, selecionado por defeito.");
             }
-            else if (selectedWorkSite is null && result.WorkSiteId.HasValue)
+            else if (selectedWorkSite is null && _defaultWorkSiteId.HasValue
+                && result.WorkSiteId == _defaultWorkSiteId.Value)
             {
                 AddWarning(
                     "Não selecionaste um local. Foi usado o teu local de trabalho habitual por defeito.");

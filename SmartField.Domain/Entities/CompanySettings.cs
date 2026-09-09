@@ -18,6 +18,8 @@ public class CompanySettings
 
     public int DefaultGeofenceRadiusMeters { get; set; }
 
+    public int MaximumLocationAccuracyMeters { get; set; } = 100;
+
     public DateTimeOffset CreatedAtUtc { get; set; }
 
     public DateTimeOffset? UpdatedAtUtc { get; set; }

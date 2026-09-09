@@ -64,6 +64,7 @@ public sealed class GeofenceSettingsService : IGeofenceSettingsService
         settings.RequireGeolocation = request.RequireGeolocation;
         settings.GeofenceMode = request.GeofenceMode;
         settings.DefaultGeofenceRadiusMeters = request.DefaultGeofenceRadiusMeters;
+        settings.MaximumLocationAccuracyMeters = request.MaximumLocationAccuracyMeters;
         settings.UpdatedAtUtc = timeProvider.GetUtcNow();
 
         await geofenceSettingsStore.SaveChangesAsync(cancellationToken);
@@ -120,6 +121,12 @@ public sealed class GeofenceSettingsService : IGeofenceSettingsService
                 [$"O raio por defeito deve estar entre {MinimumRadiusMeters} e {MaximumRadiusMeters} metros."];
         }
 
+        if (request.MaximumLocationAccuracyMeters is < 1 or > 10000)
+        {
+            errors[nameof(request.MaximumLocationAccuracyMeters)] =
+                ["A precisão máxima aceitável deve estar entre 1 e 10000 metros."];
+        }
+
         return errors;
     }
 
@@ -130,6 +137,7 @@ public sealed class GeofenceSettingsService : IGeofenceSettingsService
             settings.GeofenceMode,
             settings.DefaultGeofenceRadiusMeters,
             settings.CreatedAtUtc,
-            settings.UpdatedAtUtc);
+            settings.UpdatedAtUtc,
+            settings.MaximumLocationAccuracyMeters);
     }
 }

@@ -26,7 +26,8 @@ public sealed class GeolocationStore : IGeolocationStore
             {
                 companySettings.RequireGeolocation,
                 companySettings.GeofenceMode,
-                companySettings.DefaultGeofenceRadiusMeters
+                companySettings.DefaultGeofenceRadiusMeters,
+                companySettings.MaximumLocationAccuracyMeters
             })
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -56,6 +57,7 @@ public sealed class GeolocationStore : IGeolocationStore
             settings?.RequireGeolocation ?? false,
             settings?.GeofenceMode ?? GeofenceMode.Disabled,
             settings?.DefaultGeofenceRadiusMeters ?? 0,
-            workSite);
+            workSite,
+            settings?.MaximumLocationAccuracyMeters ?? 100);
     }
 }

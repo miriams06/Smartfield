@@ -36,10 +36,10 @@ public static class DevelopmentDataSeeder
 
         var sys = await CompanyAsync("SYS-DEMO", "Sysprime Demo");
         var avac = await CompanyAsync("AVAC-DEMO", "AVAC Demo");
-        var sede = await WorkSiteAsync(sys.Id, "SYS-SEDE", "Sede");
-        await WorkSiteAsync(sys.Id, "SYS-ARM", "Armazém");
-        var obra = await WorkSiteAsync(sys.Id, "OBR-001", "Obra Porto");
-        var avacSede = await WorkSiteAsync(avac.Id, "AVAC-SEDE", "Sede AVAC");
+        var sede = await WorkSiteAsync(sys.Id, "SYS-SEDE", "Sede", 38.722300m, -9.139300m);
+        await WorkSiteAsync(sys.Id, "SYS-ARM", "Armazém", 38.730000m, -9.145000m);
+        var obra = await WorkSiteAsync(sys.Id, "OBR-001", "Obra Porto", 41.149610m, -8.610990m);
+        var avacSede = await WorkSiteAsync(avac.Id, "AVAC-SEDE", "Sede AVAC", 41.160000m, -8.620000m);
         await ProjectAsync(sys.Id, "OBR-001", "Construção Porto", ProjectType.Construction, obra.Id);
         await ProjectAsync(sys.Id, "MAN-001", "Manutenção AVAC", ProjectType.Maintenance, sede.Id);
         await ProjectAsync(avac.Id, "MAN-AVAC-001", "Contrato Manutenção Cliente Demo", ProjectType.Maintenance, avacSede.Id);
@@ -75,12 +75,21 @@ public static class DevelopmentDataSeeder
             return company;
         }
 
-        async Task<WorkSite> WorkSiteAsync(Guid companyId, string code, string name)
+        async Task<WorkSite> WorkSiteAsync(Guid companyId, string code, string name, decimal latitude, decimal longitude)
         {
             var site = await db.WorkSites.IgnoreQueryFilters().SingleOrDefaultAsync(x => x.CompanyId == companyId && x.Code == code, cancellationToken);
-            if (site is not null) return site;
-            site = new WorkSite { CompanyId = companyId, Code = code, Name = name, CreatedAtUtc = DateTimeOffset.UtcNow };
-            db.WorkSites.Add(site);
+            if (site is null)
+            {
+                site = new WorkSite { CompanyId = companyId, Code = code, Name = name, CreatedAtUtc = DateTimeOffset.UtcNow };
+                db.WorkSites.Add(site);
+            }
+            // Illustrative demo positions only. Never overwrite a manually configured position.
+            if (site.Latitude is null && site.Longitude is null)
+            {
+                site.Latitude = latitude;
+                site.Longitude = longitude;
+                site.GeofenceRadiusMeters ??= 200;
+            }
             await db.SaveChangesAsync(cancellationToken);
             return site;
         }

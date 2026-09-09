@@ -119,6 +119,18 @@ public sealed class GeolocationService : IGeolocationService
             return BuildUnavailableLocationResult(reference.GeofenceMode);
         }
 
+        if (!request.AccuracyMeters.HasValue
+            || request.AccuracyMeters.Value > reference.MaximumLocationAccuracyMeters)
+        {
+            return new GeolocationValidationDto(
+                false,
+                null,
+                null,
+                reference.GeofenceMode,
+                "LocationAccuracyInsufficient",
+                "A localização ainda não tem precisão suficiente. Aguarda alguns segundos e tenta novamente.");
+        }
+
         if (reference.WorkSite?.Latitude is null || reference.WorkSite.Longitude is null)
         {
             return BuildUnavailableWorkSiteResult(reference.GeofenceMode);
