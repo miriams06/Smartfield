@@ -173,3 +173,6 @@ app.MapGet("/health", async (
 app.MapControllers();
 
 app.Run();
+
+// Expose the real API entry point to WebApplicationFactory integration tests.
+public partial class Program { }

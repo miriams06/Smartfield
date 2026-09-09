@@ -564,3 +564,27 @@ Apply the `AddMaximumLocationAccuracy` migration before running the updated API.
 Attendance punches require a selected WorkSite or an Employee DefaultWorkSite. If neither exists, the PWA asks the employee to select a worksite and the API rejects the request without persisting events. A default-worksite message is only displayed when a default actually exists.
 
 Demo worksites now include illustrative coordinates and a 200 m radius: SYS-SEDE (38.722300, -9.139300), SYS-ARM (38.730000, -9.145000), OBR-001 (41.149610, -8.610990), and AVAC-SEDE (41.160000, -8.620000). These are test positions, not verified business addresses. Adapt them in the backoffice for on-site GPS tests. On the next Development seed run, existing demo sites with both coordinates missing are filled; configured coordinates and radii are preserved. The existing seed password configuration is still required. The seed does not change the company's geofence mode.
+
+### HTTP API end-to-end tests (TEST-01)
+
+`SmartField.Api.Tests/ApiHttpTests.cs` runs the actual API entry point through `WebApplicationFactory` and `HttpClient`. Routing, JSON binding, middleware, Identity login, JWT validation, authorization, application services, EF Core and SQL Server remain real. Only the test host configuration and database connection are replaced; authentication is not mocked.
+
+Each test uses environment `Testing` (no Development seed), generated passwords and signing key, and a uniquely named `SmartField_Http_<GUID>` database. Migrations and synthetic data for two companies are installed before requests. That database is deleted when the factory is disposed. The configured connection's catalog is never used as the test database; the SQL account needs permission to create and drop test databases.
+
+| HTTP scenario | Coverage |
+| --- | --- |
+| Authentication | Valid/invalid login, inactive Identity user, anonymous protected endpoint, inactive Employee and previously issued JWT |
+| Authorization | Employee denied backoffice, Manager allowed, foreign Employee/WorkSite inaccessible and foreign WorkSite update rejected |
+| Full attendance day | ClockIn → BreakStart → BreakEnd → ClockOut; original summary and linked DailyWorkReport persisted, employee/backoffice reads, company isolation |
+| Invalid sequence and retries | HTTP 409 without writes, duplicate ClientEventId returns the same event, missing ClockOut summary rejected |
+| Geofence | Disabled accepts, Warning accepts outside with warning, Block rejects outside, inside accepted, poor accuracy rejected in Warning and Block |
+| ID manipulation | Foreign WorkSite/Project GUID rejected, injected company/employee fields cannot change ownership, modified JWT claim rejected |
+
+Run only the HTTP scenarios using LocalDB, or another disposable-test SQL Server instance:
+
+```powershell
+$env:SMARTFIELD_TEST_CONNECTION_STRING = 'Server=(localdb)\MSSQLLocalDB;Database=master;Trusted_Connection=True;TrustServerCertificate=True'
+dotnet test .\SmartField.Api.Tests --filter 'Layer=Http'
+```
+
+Without `SMARTFIELD_TEST_CONNECTION_STRING`, these scenarios are skipped with the existing explicit SQL configuration message. Run `dotnet test` with the variable configured to include them in the complete suite.
