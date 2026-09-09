@@ -17,17 +17,20 @@ public class AuthController : ControllerBase
     private readonly IJwtTokenService jwtTokenService;
     private readonly IAuditService auditService;
     private readonly TimeProvider timeProvider;
+    private readonly ActiveAccountValidator activeAccountValidator;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
         IJwtTokenService jwtTokenService,
         IAuditService auditService,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ActiveAccountValidator activeAccountValidator)
     {
         this.userManager = userManager;
         this.jwtTokenService = jwtTokenService;
         this.auditService = auditService;
         this.timeProvider = timeProvider;
+        this.activeAccountValidator = activeAccountValidator;
     }
 
     [HttpPost("login")]
@@ -39,7 +42,8 @@ public class AuthController : ControllerBase
         cancellationToken.ThrowIfCancellationRequested();
 
         var user = await userManager.FindByEmailAsync(request.Email);
-        if (user is null || !user.IsActive)
+        if (user is null || !await activeAccountValidator.IsActiveAsync(
+            user.Id, user.CompanyId, user.EmployeeId, cancellationToken))
         {
             return Unauthorized();
         }

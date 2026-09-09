@@ -65,6 +65,7 @@ builder.Services.AddSingleton(
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(jwtSigningKey);
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<ActiveAccountValidator>();
 builder.Services.AddScoped<IPrimaveraClient, NotConfiguredPrimaveraClient>();
 builder.Services.AddScoped<IEmployeeIntegrationService, PrimaveraEmployeeIntegrationService>();
 builder.Services.AddScoped<IAttendanceIntegrationService, PrimaveraAttendanceIntegrationService>();
@@ -93,6 +94,7 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.EventsType = typeof(ActiveAccountValidator);
         var jwtOptions = builder.Configuration
             .GetSection(JwtOptions.SectionName)
             .Get<JwtOptions>() ?? new JwtOptions();

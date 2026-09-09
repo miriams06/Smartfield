@@ -544,3 +544,9 @@ dotnet tool run dotnet-ef -- database update `
 ## Segurança de configuração
 
 Não incluir no repositório passwords, tokens, API keys, segredos JWT, connection strings com credenciais reais, certificados privados ou dados reais sem necessidade.
+
+### Employee deactivation and authentication
+
+Login and every authenticated API request check the current Identity account and its linked Employee in the database. Both must be active, and the employee must belong to the account's company. Deactivating an Employee therefore blocks previously issued JWTs on subsequent requests, including punches and operational reads. This also applies to linked Manager and Admin accounts. An Admin without an Employee association remains supported.
+
+The Employee and Identity account are preserved. Their active flags remain independent: reactivating an Employee only restores access if the Identity account itself is active. Employee updates retain the existing AuditLog `Updated` entry with the previous and new `IsActive` values. Tokens whose company or employee association no longer matches the account are rejected; log in again after changing associations.
